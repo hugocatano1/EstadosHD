@@ -28,48 +28,73 @@ import java.util.Locale
 data class Platform(
     val id: String,
     val name: String,
+    val short: String,
     val maxSeconds: Int,
     val packages: List<String>,
     val color: Color,
+    val recommended: Quality,
+    val badge: String?,
+    val isWhatsApp: Boolean,
     val note: String
 )
 
+enum class Quality(val label: String, val desc: String, val shortSide: Int, val fixedBitrate: Int, val targetMB: Int) {
+    HD_STATUS("HD Status", "1080p · peso exacto", 1080, 0, 14),
+    MAX("Máxima", "1080p · 16 Mbps", 1080, 16_000_000, 0),
+    LIGHT("Ligera", "720p · 4 Mbps", 720, 4_000_000, 0);
+
+    /** Bitrate de video. En HD Status se calcula para que cada parte pese ≤ targetMB. */
+    fun bitrateFor(durationMs: Long, withAudio: Boolean): Int {
+        if (targetMB <= 0) return fixedBitrate
+        val secs = (durationMs / 1000.0).coerceAtLeast(1.0)
+        val audio = if (withAudio) 128_000 else 0
+        val total = targetMB * 8.0 * 1024 * 1024 / secs
+        return (total * 0.92 - audio).toInt().coerceIn(1_500_000, 12_000_000)
+    }
+}
+
 val PLATFORMS = listOf(
     Platform(
-        "wa", "WhatsApp Estados", 60, listOf("com.whatsapp", "com.whatsapp.w4b"), Color(0xFF25D366),
-        "Toca «Enviar todas en orden», elige «Mi estado» una sola vez y WhatsApp las sube en fila, una tras otra."
+        "wahd", "WhatsApp HD", "WhatsApp HD", 30, listOf("com.whatsapp", "com.whatsapp.w4b"), Color(0xFF25D366),
+        Quality.HD_STATUS, "RECOMENDADO", true,
+        "Partes de 30 s con el peso exacto para que WhatsApp no las aplaste. Para lo más nítido: envíalas a tu propio chat y desde allí Reenviar → Mi estado."
     ),
     Platform(
-        "wa90", "WhatsApp 90 s", 90, listOf("com.whatsapp", "com.whatsapp.w4b"), Color(0xFF128C7E),
-        "Solo si tu WhatsApp ya permite estados de 1:30. Si te pide recortar, usa el de 60 s."
+        "wa60", "WhatsApp 60 s", "WhatsApp 60 s", 60, listOf("com.whatsapp", "com.whatsapp.w4b"), Color(0xFF128C7E),
+        Quality.HD_STATUS, null, true,
+        "Menos partes, pero WhatsApp comprime más cada una. Para máxima nitidez usa «WhatsApp HD»."
     ),
     Platform(
-        "ig", "Instagram Historias", 60, listOf("com.instagram.android"), Color(0xFFE1306C),
+        "wa90", "WhatsApp 90 s", "WhatsApp 90 s", 90, listOf("com.whatsapp", "com.whatsapp.w4b"), Color(0xFF0E6B5E),
+        Quality.HD_STATUS, null, true,
+        "Solo si tu WhatsApp ya permite estados de 1:30."
+    ),
+    Platform(
+        "ig", "Instagram Historias", "Instagram", 60, listOf("com.instagram.android"), Color(0xFFE1306C),
+        Quality.MAX, null, false,
         "Usa la cola guiada: en cada parte elige «Historia» y vuelve a Estados HD para la siguiente."
     ),
     Platform(
-        "fb", "Facebook Historias", 60, listOf("com.facebook.katana"), Color(0xFF1877F2),
+        "fb", "Facebook Historias", "Facebook", 60, listOf("com.facebook.katana"), Color(0xFF1877F2),
+        Quality.MAX, null, false,
         "Usa la cola guiada: en cada parte elige «Historia» y vuelve para la siguiente."
     ),
     Platform(
-        "yt", "YouTube Shorts", 180, listOf("com.google.android.youtube"), Color(0xFFFF3B3B),
+        "yt", "YouTube Shorts", "Shorts", 180, listOf("com.google.android.youtube"), Color(0xFFFF3B3B),
+        Quality.MAX, null, false,
         "Cada parte se abre en el editor de Shorts. Usa la cola guiada."
     ),
     Platform(
-        "tt", "TikTok", 600, listOf("com.zhiliaoapp.musically", "com.ss.android.ugc.trill"), Color(0xFF00E5E0),
+        "tt", "TikTok", "TikTok", 600, listOf("com.zhiliaoapp.musically", "com.ss.android.ugc.trill"), Color(0xFF00E5E0),
+        Quality.MAX, null, false,
         "Cada parte se abre en el editor de TikTok. Usa la cola guiada."
     ),
     Platform(
-        "custom", "Personalizado", 30, emptyList(), Color(0xFFB9A8FF),
+        "custom", "Personalizado", "A tu medida", 30, emptyList(), Color(0xFFB9A8FF),
+        Quality.MAX, null, false,
         "Ajusta los segundos y elige la app al publicar."
     )
 )
-
-enum class Quality(val label: String, val desc: String, val shortSide: Int, val bitrate: Int) {
-    MAX("Máxima", "1080p · 16 Mbps", 1080, 16_000_000),
-    HIGH("Alta", "1080p · 10 Mbps", 1080, 10_000_000),
-    LIGHT("Ligera", "720p · 5 Mbps", 720, 5_000_000)
-}
 
 enum class Frame(val label: String, val desc: String) {
     ORIGINAL("Original", "Mantiene la forma"),
@@ -94,7 +119,8 @@ data class Segment(
     val endMs: Long,
     val status: SegStatus = SegStatus.PENDING,
     val file: File? = null,
-    val thumb: Bitmap? = null
+    val thumb: Bitmap? = null,
+    val sizeBytes: Long = 0
 ) {
     val durationMs get() = endMs - startMs
 }
@@ -105,8 +131,13 @@ data class UiState(
     val platform: Platform = PLATFORMS[0],
     val secondsPerPart: Int = PLATFORMS[0].maxSeconds,
     val equalParts: Boolean = true,
-    val quality: Quality = Quality.MAX,
+    val quality: Quality = PLATFORMS[0].recommended,
     val frame: Frame = Frame.ORIGINAL,
+    val trimStartMs: Long = 0,
+    val trimEndMs: Long = 0,
+    val muteAudio: Boolean = false,
+    val cap30fps: Boolean = true,
+    val myNumber: String = "",
     val segments: List<Segment> = emptyList(),
     val processing: Boolean = false,
     val currentIndex: Int = 0,
@@ -117,6 +148,16 @@ data class UiState(
 ) {
     val allReady get() = segments.isNotEmpty() && segments.all { it.file != null }
     val readyCount get() = segments.count { it.file != null }
+    val effectiveEndMs get() = if (trimEndMs > 0) trimEndMs else (info?.durationMs ?: 0L)
+    val selectedMs get() = (effectiveEndMs - trimStartMs).coerceAtLeast(0)
+    val totalOutBytes get() = segments.sumOf { it.sizeBytes }
+    val estimatedMbPerPart: Double
+        get() {
+            if (segments.isEmpty()) return 0.0
+            val avg = segments.sumOf { it.durationMs } / segments.size
+            val br = quality.bitrateFor(avg, !muteAudio) + (if (muteAudio) 0 else 128_000)
+            return br / 8.0 * (avg / 1000.0) / (1024 * 1024)
+        }
     val overallProgress: Float
         get() {
             if (segments.isEmpty()) return 0f
@@ -130,7 +171,10 @@ data class UiState(
 
 object Splitter {
     /** Margen de 200 ms para que ninguna red recorte el último cuadro. */
-    fun plan(durationMs: Long, seconds: Int, equal: Boolean): List<Pair<Long, Long>> {
+    fun plan(fromMs: Long, toMs: Long, seconds: Int, equal: Boolean): List<Pair<Long, Long>> =
+        planLen(toMs - fromMs, seconds, equal).map { (a, b) -> (a + fromMs) to (b + fromMs) }
+
+    private fun planLen(durationMs: Long, seconds: Int, equal: Boolean): List<Pair<Long, Long>> {
         if (durationMs <= 0) return emptyList()
         val maxMs = (seconds * 1000L - 200L).coerceAtLeast(1000L)
         val n = ((durationMs + maxMs - 1) / maxMs).toInt().coerceAtLeast(1)
@@ -258,7 +302,7 @@ object Sharer {
 
     fun packageFor(ctx: Context, p: Platform): String? = p.packages.firstOrNull { isInstalled(ctx, it) }
 
-    private fun uri(ctx: Context, f: File): Uri =
+    fun uri(ctx: Context, f: File): Uri =
         FileProvider.getUriForFile(ctx, "${ctx.packageName}.fileprovider", f)
 
     private fun clipOf(ctx: Context, uris: List<Uri>): ClipData {
@@ -267,7 +311,12 @@ object Sharer {
         return clip
     }
 
-    fun single(ctx: Context, file: File, pkg: String?): Intent {
+    private fun jidOf(phone: String?): String? {
+        val d = phone?.filter { it.isDigit() } ?: return null
+        return if (d.length >= 8) "$d@s.whatsapp.net" else null
+    }
+
+    fun single(ctx: Context, file: File, pkg: String?, phone: String? = null): Intent {
         val u = uri(ctx, file)
         val send = Intent(Intent.ACTION_SEND).apply {
             type = "video/mp4"
@@ -275,11 +324,12 @@ object Sharer {
             clipData = clipOf(ctx, listOf(u))
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             if (pkg != null) setPackage(pkg)
+            if (pkg != null) jidOf(phone)?.let { putExtra("jid", it) }
         }
         return if (pkg != null) send else Intent.createChooser(send, "Publicar parte")
     }
 
-    fun multiple(ctx: Context, files: List<File>, pkg: String?): Intent {
+    fun multiple(ctx: Context, files: List<File>, pkg: String?, phone: String? = null): Intent {
         val uris = ArrayList(files.map { uri(ctx, it) })
         val send = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
             type = "video/mp4"
@@ -287,8 +337,21 @@ object Sharer {
             clipData = clipOf(ctx, uris)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             if (pkg != null) setPackage(pkg)
+            if (pkg != null) jidOf(phone)?.let { putExtra("jid", it) }
         }
         return if (pkg != null) send else Intent.createChooser(send, "Publicar partes")
+    }
+
+    fun preview(ctx: Context, file: File): Intent =
+        Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri(ctx, file), "video/mp4")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+
+    fun openWeb(ctx: Context, url: String) {
+        try {
+            ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (e: Exception) { }
     }
 
     /** Lanza un intent y, si la app no lo acepta, abre el selector general. */

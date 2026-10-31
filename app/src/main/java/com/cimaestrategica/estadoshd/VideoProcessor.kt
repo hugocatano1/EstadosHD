@@ -7,6 +7,8 @@ import androidx.annotation.OptIn
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.common.Effect
+import androidx.media3.effect.FrameDropEffect
 import androidx.media3.effect.Presentation
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.DefaultEncoderFactory
@@ -35,10 +37,10 @@ class VideoProcessor(private val context: Context) {
 
     private fun even(v: Int) = ((v / 2) * 2).coerceAtLeast(2)
 
-    private fun presentationFor(info: VideoInfo, q: Quality, f: Frame): Presentation {
+    private fun presentationFor(info: VideoInfo, shortSide: Int, f: Frame): Presentation {
         val w = info.width
         val h = info.height
-        val short = minOf(q.shortSide, minOf(w, h))
+        val short = minOf(shortSide, minOf(w, h))
         return when (f) {
             Frame.VERTICAL -> Presentation.createForWidthAndHeight(
                 even(short), even(short * 16 / 9), Presentation.LAYOUT_SCALE_TO_FIT
@@ -60,8 +62,11 @@ class VideoProcessor(private val context: Context) {
         startMs: Long,
         endMs: Long,
         out: File,
-        quality: Quality,
+        shortSide: Int,
+        bitrate: Int,
         frame: Frame,
+        removeAudio: Boolean,
+        cap30fps: Boolean,
         onProgress: (Int) -> Unit
     ) = withContext(Dispatchers.Main) {
         suspendCancellableCoroutine<Unit> { cont ->
@@ -78,8 +83,13 @@ class VideoProcessor(private val context: Context) {
                 )
                 .build()
 
+            val videoEffects = mutableListOf<Effect>()
+            if (cap30fps) videoEffects.add(FrameDropEffect.createDefaultFrameDropEffect(30f))
+            videoEffects.add(presentationFor(info, shortSide, frame))
+
             val edited = EditedMediaItem.Builder(mediaItem)
-                .setEffects(Effects(emptyList(), listOf(presentationFor(info, quality, frame))))
+                .setRemoveAudio(removeAudio)
+                .setEffects(Effects(emptyList(), videoEffects))
                 .build()
 
             val composition = Composition.Builder(listOf(EditedMediaItemSequence(listOf(edited))))
@@ -94,7 +104,7 @@ class VideoProcessor(private val context: Context) {
                 .setEncoderFactory(
                     DefaultEncoderFactory.Builder(context)
                         .setRequestedVideoEncoderSettings(
-                            VideoEncoderSettings.Builder().setBitrate(quality.bitrate).build()
+                            VideoEncoderSettings.Builder().setBitrate(bitrate).build()
                         )
                         .setEnableFallback(true)
                         .build()

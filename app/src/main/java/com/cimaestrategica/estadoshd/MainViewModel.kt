@@ -29,6 +29,45 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var processJob: Job? = null
     private var thumbJob: Job? = null
     private val ctx: Context get() = getApplication()
+    private val prefs = app.getSharedPreferences("estadoshd", Context.MODE_PRIVATE)
+
+    init {
+        _state.update { it.copy(myNumber = prefs.getString("myNumber", "") ?: "") }
+    }
+
+    fun setMyNumber(v: String) {
+        val clean = v.filter { it.isDigit() }.take(15)
+        prefs.edit().putString("myNumber", clean).apply()
+        _state.update { it.copy(myNumber = clean) }
+    }
+
+    fun setTrim(startMs: Long, endMs: Long) {
+        if (busy()) return
+        val dur = _state.value.info?.durationMs ?: return
+        var a = startMs.coerceIn(0, dur)
+        var b = endMs.coerceIn(0, dur)
+        if (b - a < 1000) { if (a + 1000 <= dur) b = a + 1000 else a = (b - 1000).coerceAtLeast(0) }
+        _state.update { it.copy(trimStartMs = a, trimEndMs = if (b >= dur) 0 else b) }
+        replan()
+    }
+
+    fun setMute(b: Boolean) {
+        if (busy()) return
+        _state.update { it.copy(muteAudio = b) }
+        resetOutputs()
+    }
+
+    fun setCap30(b: Boolean) {
+        if (busy()) return
+        _state.update { it.copy(cap30fps = b) }
+        resetOutputs()
+    }
+
+    fun clearVideo() {
+        if (busy()) return
+        thumbJob?.cancel()
+        _state.update { it.copy(info = null, segments = emptyList(), queueActive = false, trimStartMs = 0, trimEndMs = 0) }
+    }
 
     fun emit(msg: String) { _messages.tryEmit(msg) }
 
@@ -39,7 +78,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun load(uri: Uri) {
         if (busy()) { emit("Espera a que termine el proceso actual"); return }
         viewModelScope.launch {
-            _state.update { it.copy(loading = true, info = null, segments = emptyList(), queueActive = false) }
+            _state.update { it.copy(loading = true, info = null, segments = emptyList(), queueActive = false, trimStartMs = 0, trimEndMs = 0) }
             try {
                 val info = VideoMeta.read(ctx, uri)
                 if (info.durationMs <= 0) throw IllegalStateException("no se pudo leer la duración")
@@ -56,7 +95,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun selectPlatform(p: Platform) {
         if (busy()) return
-        _state.update { it.copy(platform = p, secondsPerPart = p.maxSeconds) }
+        _state.update { it.copy(platform = p, secondsPerPart = p.maxSeconds, quality = p.recommended) }
         replan()
     }
 
@@ -89,7 +128,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun resetOutputs() {
         _state.update { st ->
             st.copy(
-                segments = st.segments.map { it.copy(file = null, status = SegStatus.PENDING) },
+                segments = st.segments.map { it.copy(file = null, status = SegStatus.PENDING, sizeBytes = 0) },
                 queueActive = false, queueIndex = 0, launchedIndex = -1
             )
         }
@@ -98,7 +137,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun replan() {
         val s = _state.value
         val info = s.info ?: return
-        val ranges = Splitter.plan(info.durationMs, s.secondsPerPart, s.equalParts)
+        val ranges = Splitter.plan(s.trimStartMs, s.effectiveEndMs, s.secondsPerPart, s.equalParts)
         _state.update { st ->
             st.copy(
                 segments = ranges.mapIndexed { i, r -> Segment(i, r.first, r.second) },
@@ -141,10 +180,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 _state.update { it.copy(currentIndex = seg.index, currentProgress = 0) }
                 val out = File(dir, "parte_%02d.mp4".format(seg.index + 1))
                 try {
-                    processor.export(info, seg.startMs, seg.endMs, out, s0.quality, s0.frame) { p ->
+                    val bitrate = s0.quality.bitrateFor(seg.durationMs, !s0.muteAudio)
+                    processor.export(
+                        info, seg.startMs, seg.endMs, out,
+                        s0.quality.shortSide, bitrate, s0.frame, s0.muteAudio, s0.cap30fps
+                    ) { p ->
                         _state.update { it.copy(currentProgress = p) }
                     }
-                    setSeg(seg.index) { it.copy(status = SegStatus.READY, file = out) }
+                    setSeg(seg.index) { it.copy(status = SegStatus.READY, file = out, sizeBytes = out.length()) }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -154,7 +197,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             _state.update { it.copy(processing = false) }
             val n = segs.size
-            if (failed == 0) emit("¡Listo! $n ${if (n == 1) "parte" else "partes"} en alta calidad")
+            if (failed == 0) emit("¡Listo! $n ${if (n == 1) "parte" else "partes"} en HD")
             else emit("${n - failed} listas y $failed con error. Prueba calidad «Alta» o «Ligera».")
         }
         processJob = job
