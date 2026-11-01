@@ -77,19 +77,35 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun load(uri: Uri) {
         if (busy()) { emit("Espera a que termine el proceso actual"); return }
-        viewModelScope.launch {
-            _state.update { it.copy(loading = true, info = null, segments = emptyList(), queueActive = false, trimStartMs = 0, trimEndMs = 0) }
-            try {
-                val info = VideoMeta.read(ctx, uri)
-                if (info.durationMs <= 0) throw IllegalStateException("no se pudo leer la duración")
-                _state.update { it.copy(info = info, loading = false) }
-                replan()
-            } catch (e: Exception) {
-                _state.update { it.copy(loading = false) }
-                emit("No se pudo abrir el video: ${e.message ?: "formato no compatible"}")
-            }
+        viewModelScope.launch { loadSuspend(uri) }
+    }
+
+    private suspend fun loadSuspend(uri: Uri): Boolean {
+        _state.update { it.copy(loading = true, info = null, segments = emptyList(), queueActive = false, trimStartMs = 0, trimEndMs = 0) }
+        return try {
+            val info = VideoMeta.read(ctx, uri)
+            if (info.durationMs <= 0) throw IllegalStateException("no se pudo leer la duración")
+            _state.update { it.copy(info = info, loading = false) }
+            replan(); true
+        } catch (e: Exception) {
+            _state.update { it.copy(loading = false) }
+            emit("No se pudo abrir el video: ${e.message ?: "formato no compatible"}")
+            false
         }
     }
+
+    /** Línea de producción: video descargado → plataforma → partes HD → abrir publicación. */
+    fun runPipeline(uri: Uri, platformId: String) {
+        if (busy()) { emit("Ya hay un proceso en curso"); return }
+        viewModelScope.launch {
+            if (!loadSuspend(uri)) return@launch
+            PLATFORMS.firstOrNull { it.id == platformId }?.let { selectPlatform(it) }
+            _state.update { it.copy(autoPublish = true) }
+            process()
+        }
+    }
+
+    fun consumeAutoPublish() = _state.update { it.copy(autoPublish = false) }
 
     /* ----- Ajustes ----- */
 

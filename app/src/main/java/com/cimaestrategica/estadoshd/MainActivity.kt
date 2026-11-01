@@ -93,7 +93,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.IntentCompat
 import kotlinx.coroutines.delay
 
-const val APP_VERSION = "3.3"
+const val APP_VERSION = "3.4"
 const val AUTHOR = "Hugo Cataño"
 const val AUTHOR_WEB = "https://hugocatano.com"
 
@@ -132,6 +132,12 @@ fun AppScreen(vm: MainViewModel, dlVm: DownloadViewModel) {
     val d by dlVm.state.collectAsState()
     var section by rememberSaveable { mutableIntStateOf(0) }
     LaunchedEffect(d.openRequest) { if (d.openRequest > 0) section = 1 }
+    LaunchedEffect(d.pipeline?.n) {
+        val p = d.pipeline ?: return@LaunchedEffect
+        vm.runPipeline(Uri.fromFile(p.file), p.platformId)
+        dlVm.consumePipeline()
+        section = 0
+    }
     val context = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
     var showAbout by remember { mutableStateOf(false) }
@@ -184,10 +190,13 @@ fun AppScreen(vm: MainViewModel, dlVm: DownloadViewModel) {
             if (info == null) {
                 Column(Modifier.fillMaxSize()) {
                     Box(Modifier.weight(1f)) {
-                        if (section == 0) HomeScreen(s.loading, onPick = { pick() }, onAbout = { showAbout = true })
-                        else DownloaderScreen(d, dlVm, onAbout = { showAbout = true }, onCut = { f ->
-                            vm.load(Uri.fromFile(f)); section = 0
-                        })
+                        when (section) {
+                            0 -> HomeScreen(s.loading, onPick = { pick() }, onAbout = { showAbout = true })
+                            1 -> DownloaderScreen(d, dlVm, onAbout = { showAbout = true }, onCut = { f ->
+                                vm.load(Uri.fromFile(f)); section = 0
+                            })
+                            else -> HistoryScreen(d, dlVm, onAbout = { showAbout = true })
+                        }
                     }
                     BottomNav(section) { section = it }
                 }
@@ -383,6 +392,9 @@ fun EditorScreen(s: UiState, vm: MainViewModel, info: VideoInfo, onPick: () -> U
     var showPublish by remember { mutableStateOf(false) }
 
     LaunchedEffect(s.allReady) { if (s.allReady) tab = 3 }
+    LaunchedEffect(s.allReady, s.autoPublish) {
+        if (s.allReady && s.autoPublish) { showPublish = true; vm.consumeAutoPublish() }
+    }
 
     Column(Modifier.fillMaxSize()) {
         Column(

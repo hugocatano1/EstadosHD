@@ -114,14 +114,15 @@ fun DownloaderScreen(d: DlState, vm: DownloadViewModel, onAbout: () -> Unit, onC
                     if (row.size == 1) Spacer(Modifier.weight(1f))
                 }
             }
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(4.dp))
+            PipelineCard(d, vm)
+            Spacer(Modifier.height(12.dp))
             if (d.downloading) ProgressCard(d) { vm.cancel() }
-            else Button3D("Descargar ahora", R.drawable.ms_download, Modifier.fillMaxWidth(), face = GGreen) { vm.download() }
-        }
-        if (d.history.isNotEmpty()) {
-            Spacer(Modifier.height(18.dp))
-            Text("Tus descargas", fontWeight = FontWeight.Bold, fontSize = 17.sp, color = cs.onBackground, modifier = Modifier.padding(start = 4.dp, bottom = 8.dp))
-            d.history.forEach { item -> HistoryRow(item, ctx, onCut) { vm.remove(item) } }
+            else Button3D(
+                if (d.autoStatus) "Descargar y crear estados" else "Descargar ahora",
+                if (d.autoStatus) R.drawable.ms_auto_awesome else R.drawable.ms_download,
+                Modifier.fillMaxWidth(), face = if (d.autoStatus) Color(0xFFD62976) else GGreen
+            ) { vm.download() }
         }
         Spacer(Modifier.height(16.dp))
         Row(
@@ -338,10 +339,14 @@ fun BottomNav(section: Int, onSelect: (Int) -> Unit) {
             .clip(shape)
             .background(cs.surface)
             .navigationBarsPadding()
-            .padding(horizontal = 18.dp, vertical = 10.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        listOf(Triple("Estados HD", R.drawable.ms_hd, GBlue), Triple("Descargar", R.drawable.ms_cloud_download, Color(0xFFD62976))).forEachIndexed { i, (label, ic, col) ->
+        listOf(
+            Triple("Estados", R.drawable.ms_hd, GBlue),
+            Triple("Descargar", R.drawable.ms_cloud_download, Color(0xFFD62976)),
+            Triple("Historial", R.drawable.ms_folder, GYellow)
+        ).forEachIndexed { i, (label, ic, col) ->
             val sel = i == section
             Row(
                 Modifier
@@ -353,9 +358,9 @@ fun BottomNav(section: Int, onSelect: (Int) -> Unit) {
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (sel) Icon3D(ic, col, 36.dp) else Icon(painterResource(ic), null, tint = cs.onSurfaceVariant, modifier = Modifier.size(24.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(label, fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium, fontSize = 14.sp, color = if (sel) cs.onSurface else cs.onSurfaceVariant)
+                if (sel) Icon3D(ic, col, 32.dp) else Icon(painterResource(ic), null, tint = cs.onSurfaceVariant, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(label, fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium, fontSize = 13.sp, color = if (sel) cs.onSurface else cs.onSurfaceVariant, maxLines = 1)
             }
         }
     }
@@ -465,5 +470,173 @@ fun LoginOverlay(accKey: String, onDone: (Boolean) -> Unit) {
             },
             modifier = Modifier.fillMaxSize()
         )
+    }
+}
+
+
+/** Línea de producción: al terminar la descarga, crea las partes HD y abre la publicación. */
+@Composable
+fun PipelineCard(d: DlState, vm: DownloadViewModel) {
+    val pink = Color(0xFFD62976)
+    val shape = RoundedCornerShape(22.dp)
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .shadow(if (d.autoStatus) 8.dp else 1.dp, shape, spotColor = pink)
+            .clip(shape)
+            .background(if (d.autoStatus) lerp(cs.surface, pink, 0.07f) else cs.surface)
+            .border(if (d.autoStatus) 1.5.dp else 0.dp, if (d.autoStatus) pink.copy(alpha = 0.5f) else Color.Transparent, shape)
+            .padding(14.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon3D(R.drawable.ms_auto_awesome, pink, 38.dp)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Subir a estados al terminar", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = cs.onSurface)
+                Text("Descarga → partes HD → publicar en orden, todo seguido", fontSize = 11.sp, color = cs.onSurfaceVariant, lineHeight = 14.sp)
+            }
+            androidx.compose.material3.Switch(checked = d.autoStatus, onCheckedChange = { vm.setAutoStatus(it) }, enabled = !d.downloading)
+        }
+        AnimatedVisibility(visible = d.autoStatus) {
+            Column {
+                Spacer(Modifier.height(12.dp))
+                Text("¿Para qué red?", fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = cs.onSurfaceVariant, modifier = Modifier.padding(bottom = 8.dp))
+                PLATFORMS.chunked(4).forEach { row ->
+                    Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        row.forEach { p ->
+                            val on = p.id == d.autoPlatformId
+                            Column(
+                                Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(if (on) lerp(cs.surface, p.color, 0.14f) else cs.surfaceContainerHigh)
+                                    .border(if (on) 1.5.dp else 0.dp, if (on) p.color else Color.Transparent, RoundedCornerShape(14.dp))
+                                    .clickable(enabled = !d.downloading) { vm.setAutoPlatform(p.id) }
+                                    .padding(vertical = 8.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Icon3D(platformIcon(p), p.color, 28.dp)
+                                Spacer(Modifier.height(4.dp))
+                                Text(p.short, fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = cs.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text("${p.maxSeconds} s", fontSize = 9.sp, color = cs.onSurfaceVariant)
+                            }
+                        }
+                        repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/* ======================= Historial ======================= */
+
+@Composable
+fun HistoryScreen(d: DlState, vm: DownloadViewModel, onAbout: () -> Unit) {
+    val ctx = LocalContext.current
+    var confirm by remember { mutableStateOf(false) }
+    val total = d.history.sumOf { it.size }
+    val selMode = d.selected.isNotEmpty()
+    Column(Modifier.fillMaxSize().statusBarsPadding().padding(horizontal = 18.dp)) {
+        TopBar(onAbout, trailing = null)
+        Spacer(Modifier.height(4.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            StatTile(R.drawable.ms_folder, GYellow, "${d.history.size}", "descargas", Modifier.weight(1f))
+            StatTile(R.drawable.ms_layers, GBlue, fmtSize(total), "ocupado", Modifier.weight(1f))
+            StatTile(R.drawable.ms_hd, Color(0xFFD62976), "${d.history.count { it.sentToStatus }}", "a estados", Modifier.weight(1f))
+        }
+        Spacer(Modifier.height(12.dp))
+        if (d.history.isEmpty()) {
+            Column(Modifier.fillMaxWidth().weight(1f), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                Icon3D(R.drawable.ms_folder, GYellow, 84.dp)
+                Spacer(Modifier.height(16.dp))
+                Text("Aún no hay descargas", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = cs.onSurface)
+                Text("Lo que descargues aparecerá aquí", fontSize = 13.sp, color = cs.onSurfaceVariant)
+            }
+        } else {
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(cs.surfaceContainerHigh).padding(horizontal = 6.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                androidx.compose.material3.Checkbox(
+                    checked = d.selected.size == d.history.size && d.history.isNotEmpty(),
+                    onCheckedChange = { vm.selectAll() }
+                )
+                Text(if (selMode) "${d.selected.size} seleccionadas" else "Seleccionar todo", fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = cs.onSurface, modifier = Modifier.weight(1f))
+                if (selMode) TextButton(onClick = { vm.clearSelection() }) { Text("Cancelar") }
+            }
+            Spacer(Modifier.height(8.dp))
+            androidx.compose.foundation.lazy.LazyColumn(
+                Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 10.dp)
+            ) {
+                items(d.history.size, key = { d.history[it].id }) { i ->
+                    val it2 = d.history[i]
+                    HistoryItemRow(it2, it2.id in d.selected, selMode, ctx,
+                        onToggle = { vm.toggleSelect(it2.id) },
+                        onStatus = { vm.sendToStatus(it2) })
+                }
+            }
+            AnimatedVisibility(visible = selMode) {
+                Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Tonal3D("Quitar", R.drawable.ms_close, Modifier.weight(1f)) { vm.deleteSelected(false) }
+                    Button3D("Borrar archivos", R.drawable.ms_delete, Modifier.weight(1.3f), face = GRed, height = 52.dp) { confirm = true }
+                }
+            }
+        }
+    }
+    if (confirm) {
+        val bytes = d.history.filter { it.id in d.selected }.sumOf { it.size }
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirm = false },
+            icon = { Icon3D(R.drawable.ms_delete, GRed, 52.dp) },
+            title = { Text("¿Borrar ${d.selected.size} definitivamente?", fontWeight = FontWeight.Bold) },
+            text = { Text("Se eliminarán los archivos de la app y de tu galería (carpeta EstadosHD). Liberarás ${fmtSize(bytes)}. No se puede deshacer.") },
+            confirmButton = { TextButton(onClick = { confirm = false; vm.deleteSelected(true) }) { Text("Borrar", color = GRed, fontWeight = FontWeight.Bold) } },
+            dismissButton = { TextButton(onClick = { confirm = false }) { Text("Cancelar") } }
+        )
+    }
+}
+
+@Composable
+fun HistoryItemRow(item: DlItem, selected: Boolean, selMode: Boolean, ctx: Context, onToggle: () -> Unit, onStatus: () -> Unit) {
+    val (ic, col) = FORMAT_UI.getValue(item.format)
+    val shape = RoundedCornerShape(20.dp)
+    val date = remember(item.date) { java.text.SimpleDateFormat("d MMM · h:mm a", java.util.Locale("es", "CO")).format(java.util.Date(item.date)) }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .shadow(if (selected) 6.dp else 1.dp, shape, spotColor = GBlue)
+            .clip(shape)
+            .background(if (selected) lerp(cs.surface, GBlue, 0.08f) else cs.surface)
+            .border(if (selected) 2.dp else 0.dp, if (selected) GBlue else Color.Transparent, shape)
+            .clickable { if (selMode) onToggle() else if (item.exists) Sharer.safeStart(ctx, Sharer.openAny(ctx, item.files.first { f -> f.exists() })) }
+            .padding(10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        androidx.compose.material3.Checkbox(checked = selected, onCheckedChange = { onToggle() })
+        Box(Modifier.size(54.dp).clip(RoundedCornerShape(14.dp)).background(cs.surfaceVariant), contentAlignment = Alignment.Center) {
+            val img = remember(item.thumb) { item.thumb?.asImageBitmap() }
+            if (img != null) Image(img, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            else Icon3D(ic, col, 34.dp)
+        }
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(item.title, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, color = cs.onSurface)
+            Text("${item.site} · ${item.format.title}", fontSize = 11.sp, color = cs.onSurfaceVariant, maxLines = 1)
+            Text(
+                if (item.exists) "$date · ${fmtSize(item.size)}" else "$date · archivo borrado",
+                fontSize = 10.5.sp, color = if (item.exists) cs.onSurfaceVariant else GRed, maxLines = 1
+            )
+            if (item.sentToStatus) Text("Enviado a estados", fontSize = 10.sp, color = Color(0xFFD62976), fontWeight = FontWeight.SemiBold)
+        }
+        if (!selMode && item.exists) {
+            Box(Modifier.clickable { Sharer.safeStart(ctx, Sharer.shareAny(ctx, item.files.filter { f -> f.exists() })) }) { Icon3D(R.drawable.ms_share, GBlue, 32.dp) }
+            if (item.isVideo) {
+                Spacer(Modifier.width(6.dp))
+                Box(Modifier.clickable(onClick = onStatus)) { Icon3D(R.drawable.ms_auto_awesome, Color(0xFFD62976), 32.dp) }
+            }
+        }
     }
 }

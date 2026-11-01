@@ -145,7 +145,8 @@ data class UiState(
     val queueActive: Boolean = false,
     val queueIndex: Int = 0,
     val launchedIndex: Int = -1,
-    val awaitingConfirm: Boolean = false
+    val awaitingConfirm: Boolean = false,
+    val autoPublish: Boolean = false
 ) {
     val allReady get() = segments.isNotEmpty() && segments.all { it.file != null }
     val readyCount get() = segments.count { it.file != null }
@@ -268,9 +269,9 @@ object VideoMeta {
 
 object GallerySaver {
     /** Guarda cualquier archivo en la carpeta correcta según su tipo. */
-    suspend fun saveAny(ctx: Context, files: List<File>): Int = withContext(Dispatchers.IO) {
+    suspend fun saveAny(ctx: Context, files: List<File>): List<String> = withContext(Dispatchers.IO) {
         val resolver = ctx.contentResolver
-        var ok = 0
+        val ok = mutableListOf<String>()
         for (f in files) {
             val ext = f.extension.lowercase()
             val (collection, mime, dir) = when (ext) {
@@ -288,7 +289,7 @@ object GallerySaver {
             try {
                 resolver.openOutputStream(uri)?.use { out -> f.inputStream().use { it.copyTo(out) } }
                 values.clear(); values.put(MediaStore.MediaColumns.IS_PENDING, 0)
-                resolver.update(uri, values, null, null); ok++
+                resolver.update(uri, values, null, null); ok += uri.toString()
             } catch (e: Exception) { resolver.delete(uri, null, null) }
         }
         ok
