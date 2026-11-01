@@ -286,7 +286,8 @@ object GallerySaver {
                 put(MediaStore.MediaColumns.RELATIVE_PATH, "$dir/EstadosHD")
                 put(MediaStore.MediaColumns.IS_PENDING, 1)
             }
-            val uri = resolver.insert(collection, values) ?: run { ok += null; continue }
+            val uri = resolver.insert(collection, values)
+            if (uri == null) { ok += null; continue }
             try {
                 resolver.openOutputStream(uri)?.use { out -> f.inputStream().use { it.copyTo(out) } }
                 values.clear(); values.put(MediaStore.MediaColumns.IS_PENDING, 0)
