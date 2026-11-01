@@ -60,7 +60,7 @@ val PLATFORMS = listOf(
         "Partes de 30 s con el peso exacto para que WhatsApp no las aplaste. Para lo más nítido: envíalas a tu propio chat y desde allí Reenviar → Mi estado."
     ),
     Platform(
-        "wa60", "WhatsApp 60 s", "WhatsApp 60 s", 60, listOf("com.whatsapp", "com.whatsapp.w4b"), Color(0xFF128C7E),
+        "wa60", "WhatsApp 60 s", "WhatsApp 60 s", 60, listOf("com.whatsapp", "com.whatsapp.w4b"), Color(0xFF00A884),
         Quality.HD_STATUS, null, true,
         "Menos partes, pero WhatsApp comprime más cada una. Para máxima nitidez usa «WhatsApp HD»."
     ),
@@ -80,17 +80,17 @@ val PLATFORMS = listOf(
         "Usa la cola guiada: en cada parte elige «Historia» y vuelve para la siguiente."
     ),
     Platform(
-        "yt", "YouTube Shorts", "Shorts", 180, listOf("com.google.android.youtube"), Color(0xFFFF3B3B),
+        "yt", "YouTube Shorts", "Shorts", 180, listOf("com.google.android.youtube"), Color(0xFFEA4335),
         Quality.MAX, null, false,
         "Cada parte se abre en el editor de Shorts. Usa la cola guiada."
     ),
     Platform(
-        "tt", "TikTok", "TikTok", 600, listOf("com.zhiliaoapp.musically", "com.ss.android.ugc.trill"), Color(0xFF00E5E0),
+        "tt", "TikTok", "TikTok", 600, listOf("com.zhiliaoapp.musically", "com.ss.android.ugc.trill"), Color(0xFFFE2C55),
         Quality.MAX, null, false,
         "Cada parte se abre en el editor de TikTok. Usa la cola guiada."
     ),
     Platform(
-        "custom", "Personalizado", "A tu medida", 30, emptyList(), Color(0xFFB9A8FF),
+        "custom", "Personalizado", "A tu medida", 30, emptyList(), Color(0xFF9334E6),
         Quality.MAX, null, false,
         "Ajusta los segundos y elige la app al publicar."
     )
