@@ -1,3 +1,16 @@
 <resources>
     <string name="app_name">Estados HD</string>
+    <string name="share_create">Crear estados HD</string>
+    <string name="share_download">Descargar con Estados HD</string>
+    <string name="widget_name">Estados HD</string>
+    <string name="widget_desc">Pega un enlace y conviértelo en estados HD en un toque</string>
+    <string name="quick_name">Pegar y crear</string>
+    <string name="quick_desc">Un toque: pega el enlace copiado y crea los estados</string>
+    <string name="sc_paste">Pegar y crear</string>
+    <string name="sc_paste_long">Pegar enlace y crear estados</string>
+    <string name="sc_video">Elegir video</string>
+    <string name="sc_video_long">Elegir video de la galería</string>
+    <string name="sc_download">Descargar</string>
+    <string name="sc_history">Historial</string>
+    <string name="tile_label">Crear estados</string>
 </resources>

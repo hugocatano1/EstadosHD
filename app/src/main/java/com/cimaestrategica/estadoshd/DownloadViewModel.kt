@@ -185,8 +185,10 @@ class DownloadViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun persist() {
         val h = _state.value.history
-        viewModelScope.launch(Dispatchers.IO) { HistoryStore.save(ctx, h) }
+        viewModelScope.launch(Dispatchers.IO) { HistoryStore.save(ctx, h); refreshWidgets(ctx) }
     }
+
+    fun autoPlatform() = _state.value.autoPlatformId
 
     fun setUrl(v: String) = _state.update { it.copy(url = v.trim(), info = if (v.trim() == it.url) it.info else null) }
     fun setFormat(f: DlFormat) = _state.update { it.copy(format = f) }
@@ -231,10 +233,11 @@ class DownloadViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(connected = Accounts.connected(ctx)) }
     }
 
-    fun openWithText(text: String) {
-        val u = Sites.extractUrl(text) ?: return
+    /** Llega un enlace desde otra app / widget. pipeline=true: descarga y crea estados sin tocar nada más. */
+    fun openWithText(text: String, pipeline: Boolean = false) {
+        val u = Sites.extractUrl(text) ?: run { emit("No encontré un enlace. Copia el link del video y vuelve a intentar."); return }
         _state.update { it.copy(url = u, info = null, openRequest = it.openRequest + 1) }
-        analyze()
+        analyze(autoDownload = pipeline)
     }
 
     private fun fail(e: Exception) {
@@ -250,7 +253,7 @@ class DownloadViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun analyze() {
+    fun analyze(autoDownload: Boolean = false) {
         val url = Sites.extractUrl(_state.value.url) ?: run { emit("Pega un enlace válido (https://…)"); return }
         if (_state.value.analyzing || _state.value.downloading) return
         _state.update { it.copy(url = url, analyzing = true, info = null, thumb = null, errorTitle = null, errorDetail = null) }
@@ -260,8 +263,10 @@ class DownloadViewModel(app: Application) : AndroidViewModel(app) {
                 val bmp = withContext(Dispatchers.IO) { DownloadEngine.loadBitmap(info.thumbnailUrl) }
                 _state.update {
                     it.copy(analyzing = false, info = info, thumb = bmp,
-                        format = if (info.hasVideo) DlFormat.VIDEO_BEST else DlFormat.SLIDESHOW)
+                        format = if (info.hasVideo) DlFormat.VIDEO_BEST else DlFormat.SLIDESHOW,
+                        autoStatus = if (autoDownload) true else it.autoStatus)
                 }
+                if (autoDownload) download()
             } catch (e: Exception) {
                 _state.update { it.copy(analyzing = false) }
                 fail(e)

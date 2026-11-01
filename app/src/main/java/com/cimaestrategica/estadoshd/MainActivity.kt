@@ -94,7 +94,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.IntentCompat
 import kotlinx.coroutines.delay
 
-const val APP_VERSION = "3.5"
+const val APP_VERSION = "3.6"
 const val AUTHOR = "Hugo Cataño"
 const val AUTHOR_WEB = "https://hugocatano.com"
 
@@ -102,12 +102,14 @@ class MainActivity : ComponentActivity() {
 
     private val vm: MainViewModel by viewModels()
     private val dlVm: DownloadViewModel by viewModels()
+    private val navCmd = androidx.compose.runtime.mutableStateOf<Pair<String, Long>?>(null)
+    private var pendingPaste = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         if (savedInstanceState == null) handleShare(intent)
-        setContent { EstadosTheme { AppScreen(vm, dlVm) } }
+        setContent { EstadosTheme { AppScreen(vm, dlVm, navCmd.value) } }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -116,23 +118,62 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleShare(intent: Intent?) {
-        if (intent?.action == Intent.ACTION_SEND) {
-            val stream = IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
-            val text = intent.getStringExtra(Intent.EXTRA_TEXT)
-            if (stream != null && intent.type?.startsWith("video") == true) vm.load(stream)
-            else if (text != null) dlVm.openWithText(text)
+        if (intent == null) return
+        val full = intent.component?.className?.endsWith("CrearEstados") == true
+        when (intent.action) {
+            Intent.ACTION_SEND -> {
+                val stream = IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
+                val text = intent.getStringExtra(Intent.EXTRA_TEXT)
+                if (stream != null && intent.type?.startsWith("video") == true) {
+                    if (full) vm.runPipeline(stream, dlVm.autoPlatform()) else vm.load(stream)
+                    nav("estados")
+                } else if (text != null) dlVm.openWithText(text, pipeline = full)
+            }
+            Intent.ACTION_PROCESS_TEXT -> {
+                val text = intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString()
+                if (text != null) dlVm.openWithText(text, pipeline = true)
+            }
+            Launch.PASTE -> { pendingPaste = true; if (hasWindowFocus()) consumePaste() }
+            Launch.PICK -> nav("pick")
+            Launch.DOWNLOAD -> nav("download")
+            Launch.HISTORY -> nav("history")
         }
+    }
+
+    private fun nav(cmd: String) { navCmd.value = cmd to System.nanoTime() }
+
+    /** El portapapeles solo se puede leer cuando la app ya tiene el foco. */
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && pendingPaste) consumePaste()
+    }
+
+    private fun consumePaste() {
+        pendingPaste = false
+        val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        val txt = cm.primaryClip?.getItemAt(0)?.coerceToText(this)?.toString().orEmpty()
+        nav("download")
+        dlVm.openWithText(txt, pipeline = true)
     }
 }
 
 /* ======================= Raíz ======================= */
 
 @Composable
-fun AppScreen(vm: MainViewModel, dlVm: DownloadViewModel) {
+fun AppScreen(vm: MainViewModel, dlVm: DownloadViewModel, navCmd: Pair<String, Long>? = null) {
     val s by vm.state.collectAsState()
     val d by dlVm.state.collectAsState()
     var section by rememberSaveable { mutableIntStateOf(0) }
     LaunchedEffect(d.openRequest) { if (d.openRequest > 0) section = 1 }
+    var pickRequest by remember { mutableIntStateOf(0) }
+    LaunchedEffect(navCmd?.second) {
+        when (navCmd?.first) {
+            "download" -> if (s.info == null) section = 1
+            "history" -> if (s.info == null) section = 2
+            "estados" -> section = 0
+            "pick" -> { section = 0; pickRequest++ }
+        }
+    }
     LaunchedEffect(d.pipeline?.n) {
         val p = d.pipeline ?: return@LaunchedEffect
         vm.runPipeline(p.uri, p.platformId)
@@ -150,6 +191,7 @@ fun AppScreen(vm: MainViewModel, dlVm: DownloadViewModel) {
         vm.onQueueReturned()
     }
     fun pick() = picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
+    LaunchedEffect(pickRequest) { if (pickRequest > 0 && !s.processing) pick() }
 
     LaunchedEffect(Unit) { vm.messages.collect { snackbar.showSnackbar(it) } }
     LaunchedEffect(Unit) { dlVm.messages.collect { snackbar.showSnackbar(it) } }

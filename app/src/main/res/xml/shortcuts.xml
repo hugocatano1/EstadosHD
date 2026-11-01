@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut android:shortcutId="paste" android:enabled="true" android:icon="@drawable/shortcut_paste"
+        android:shortcutShortLabel="@string/sc_paste" android:shortcutLongLabel="@string/sc_paste_long">
+        <intent android:action="com.cimaestrategica.estadoshd.PASTE_STATUS" android:targetPackage="com.cimaestrategica.estadoshd" android:targetClass="com.cimaestrategica.estadoshd.MainActivity" />
+    </shortcut>
+    <shortcut android:shortcutId="video" android:enabled="true" android:icon="@drawable/shortcut_video"
+        android:shortcutShortLabel="@string/sc_video" android:shortcutLongLabel="@string/sc_video_long">
+        <intent android:action="com.cimaestrategica.estadoshd.PICK_VIDEO" android:targetPackage="com.cimaestrategica.estadoshd" android:targetClass="com.cimaestrategica.estadoshd.MainActivity" />
+    </shortcut>
+    <shortcut android:shortcutId="download" android:enabled="true" android:icon="@drawable/shortcut_download"
+        android:shortcutShortLabel="@string/sc_download" android:shortcutLongLabel="@string/sc_download">
+        <intent android:action="com.cimaestrategica.estadoshd.OPEN_DOWNLOAD" android:targetPackage="com.cimaestrategica.estadoshd" android:targetClass="com.cimaestrategica.estadoshd.MainActivity" />
+    </shortcut>
+    <shortcut android:shortcutId="history" android:enabled="true" android:icon="@drawable/shortcut_history"
+        android:shortcutShortLabel="@string/sc_history" android:shortcutLongLabel="@string/sc_history">
+        <intent android:action="com.cimaestrategica.estadoshd.OPEN_HISTORY" android:targetPackage="com.cimaestrategica.estadoshd" android:targetClass="com.cimaestrategica.estadoshd.MainActivity" />
+    </shortcut>
+</shortcuts>
