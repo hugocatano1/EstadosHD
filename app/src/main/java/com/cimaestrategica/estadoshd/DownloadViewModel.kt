@@ -113,7 +113,9 @@ class DownloadViewModel(app: Application) : AndroidViewModel(app) {
         _state.update {
             it.copy(
                 errorTitle = friendly(raw),
-                errorDetail = raw.lines().filter { l -> l.isNotBlank() }.takeLast(6).joinToString("\n").take(900),
+                errorDetail = raw.lines().filter { l -> l.isNotBlank() }.let { ls ->
+                    (ls.filter { l -> l.startsWith("página") || l.startsWith("graphql") || l.startsWith("embed") || l.startsWith("Instagram") } + ls.takeLast(3)).distinct()
+                }.joinToString("\n").take(1200),
                 errorAccount = if (needsLogin || (acc != null && acc.key !in it.connected)) acc?.key else null
             )
         }

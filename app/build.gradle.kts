@@ -13,8 +13,8 @@ android {
         minSdk = 29
         targetSdk = 35
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
-        versionCode = 8
-        versionName = "3.2"
+        versionCode = 9
+        versionName = "3.3"
     }
 
     signingConfigs {
@@ -67,6 +67,6 @@ dependencies {
     implementation("androidx.media3:media3-transformer:1.4.1")
     implementation("androidx.media3:media3-effect:1.4.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
-    implementation("io.github.junkfood02.youtubedl-android:library:0.16.0")
-    implementation("io.github.junkfood02.youtubedl-android:ffmpeg:0.16.0")
+    implementation("io.github.junkfood02.youtubedl-android:library:0.17.2")
+    implementation("io.github.junkfood02.youtubedl-android:ffmpeg:0.17.2")
 }

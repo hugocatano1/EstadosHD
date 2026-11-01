@@ -25,6 +25,10 @@ object IgExtractor {
     private val DOC_IDS = listOf("8845758582119845", "9510064595728286", "10015901848480474")
 
     private val cache = HashMap<String, Post>()
+    private val cookies = java.net.CookieManager(null, java.net.CookiePolicy.ACCEPT_ALL)
+    init { java.net.CookieHandler.setDefault(cookies) }
+    private fun cookie(name: String): String? =
+        cookies.cookieStore.cookies.firstOrNull { it.name == name && it.domain.contains("instagram") }?.value
     fun cached(url: String) = cache[shortcode(url) ?: url]
 
     fun isInstagram(url: String) = url.contains("instagram.com", true) || url.contains("instagr.am", true)
@@ -52,15 +56,27 @@ object IgExtractor {
         val url = resolve(url0)
         val sc = shortcode(url) ?: throw IllegalArgumentException("No reconozco este enlace de Instagram")
         val errors = mutableListOf<String>()
+        var lsd = "AVqbxe3J_YA"
+        try {
+            val page = conn("https://www.instagram.com/reel/$sc/").let { c ->
+                c.setRequestProperty("Accept", "text/html,application/xhtml+xml")
+                c.setRequestProperty("Sec-Fetch-Mode", "navigate")
+                if (c.responseCode !in 200..299) throw IllegalStateException("HTTP ${c.responseCode}")
+                c.inputStream.bufferedReader().readText()
+            }
+            Regex("\"LSD\",\\[\\],\\{\"token\":\"([^\"]+)\"").find(page)?.groupValues?.get(1)?.let { lsd = it }
+            fromPage(page)?.let { cache[sc] = it; return it }
+            errors += "página: sin video en el HTML público"
+        } catch (e: Exception) { errors += "página: ${e.message}" }
         for (doc in DOC_IDS) {
-            try { graphql(sc, doc)?.let { cache[sc] = it; return it } } catch (e: Exception) { errors += "graphql($doc): ${e.message}" }
+            try { graphql(sc, doc, lsd)?.let { cache[sc] = it; return it } ?: run { errors += "graphql($doc): respuesta vacía" } }
+            catch (e: Exception) { errors += "graphql($doc): ${e.message}" }
         }
         try { embed(sc)?.let { cache[sc] = it; return it } } catch (e: Exception) { errors += "embed: ${e.message}" }
         throw IllegalStateException("Instagram no entregó el contenido público.\n" + errors.joinToString("\n"))
     }
 
-    private fun graphql(sc: String, docId: String): Post? {
-        var lsd = "AVqbxe3J_YA"
+    private fun graphql(sc: String, docId: String, lsd: String): Post? {
         val vars = """{"shortcode":"$sc","fetch_tagged_user_count":null,"hoisted_comment_id":null,"hoisted_reply_id":null}"""
         val body = "lsd=$lsd&doc_id=$docId&variables=" + URLEncoder.encode(vars, "UTF-8")
         val c = conn("https://www.instagram.com/graphql/query")
@@ -72,6 +88,7 @@ object IgExtractor {
         c.setRequestProperty("Sec-Fetch-Site", "same-origin")
         c.setRequestProperty("Origin", "https://www.instagram.com")
         c.setRequestProperty("Referer", "https://www.instagram.com/reel/$sc/")
+        cookie("csrftoken")?.let { c.setRequestProperty("X-CSRFToken", it) }
         c.outputStream.use { it.write(body.toByteArray()) }
         if (c.responseCode !in 200..299) throw IllegalStateException("HTTP ${c.responseCode}")
         val txt = c.inputStream.bufferedReader().readText()
@@ -92,6 +109,22 @@ object IgExtractor {
         )
     }
 
+    /** Lee el video directamente del HTML público del reel (video_versions / video_url). */
+    private fun fromPage(raw: String): Post? {
+        var html = raw
+        repeat(3) { html = unescape(html) }
+        val video = Regex("\"video_versions\":\\[\\{[^\\]]*?\"url\":\"(https[^\"]+)\"").find(html)?.groupValues?.get(1)
+            ?: Regex("\"video_url\":\"(https[^\"]+)\"").find(html)?.groupValues?.get(1)
+            ?: Regex("<meta property=\"og:video(?::secure_url)?\" content=\"([^\"]+)\"").find(html)?.groupValues?.get(1)
+        val image = Regex("<meta property=\"og:image\" content=\"([^\"]+)\"").find(html)?.groupValues?.get(1)
+            ?: Regex("\"display_url\":\"(https[^\"]+)\"").find(html)?.groupValues?.get(1)
+        if (video == null) return null
+        val user = Regex("\"username\":\"([A-Za-z0-9._]+)\"").find(html)?.groupValues?.get(1).orEmpty()
+        val title = Regex("<meta property=\"og:title\" content=\"([^\"]+)\"").find(html)?.groupValues?.get(1)?.take(90)
+            ?: "Reel de @$user"
+        return Post(title, user, 0, listOf(Media(true, video, image)), null)
+    }
+
     private fun node(n: JSONObject): Media {
         val isVideo = n.optBoolean("is_video")
         val disp = n.optString("display_url").ifBlank { null }
@@ -102,7 +135,8 @@ object IgExtractor {
         .replace("\\\\u0026", "&").replace("\\u0026", "&").replace("&amp;", "&").replace("\\\"", "\"")
 
     private fun embed(sc: String): Post? {
-        val html = unescape(conn("https://www.instagram.com/p/$sc/embed/captioned/", UA_M).inputStream.bufferedReader().readText())
+        var html = conn("https://www.instagram.com/p/$sc/embed/captioned/", UA_M).inputStream.bufferedReader().readText()
+        repeat(3) { html = unescape(html) }
         val video = Regex("\"video_url\":\"(https[^\"]+)\"").find(html)?.groupValues?.get(1)
         val images = Regex("\"display_url\":\"(https[^\"]+)\"").findAll(html).map { it.groupValues[1] }.distinct().toList()
             .ifEmpty { Regex("class=\"EmbeddedMediaImage\"[^>]*src=\"([^\"]+)\"").findAll(html).map { it.groupValues[1] }.toList() }
