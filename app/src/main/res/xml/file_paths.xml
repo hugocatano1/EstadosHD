@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
     <cache-path name="segments" path="segments/" />
+    <external-files-path name="descargas" path="descargas/" />
+    <files-path name="descargas_int" path="descargas/" />
 </paths>

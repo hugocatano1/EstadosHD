@@ -1,6 +1,10 @@
 package com.cimaestrategica.estadoshd
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.media.MediaMetadataRetriever
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import androidx.annotation.OptIn
@@ -146,5 +150,81 @@ class VideoProcessor(private val context: Context) {
                 }
             }
         }
+    }
+
+    /** Une una o varias imágenes con un audio y produce un MP4 (fotos con sonido -> video). */
+    suspend fun slideshow(images: List<File>, audio: File, out: File, onProgress: (Int) -> Unit) {
+        val prepared = withContext(Dispatchers.IO) {
+            images.mapIndexedNotNull { i, f ->
+                val bmp = BitmapFactory.decodeFile(f.absolutePath) ?: return@mapIndexedNotNull null
+                val sc = minOf(1f, minOf(1080f / minOf(bmp.width, bmp.height), 1920f / maxOf(bmp.width, bmp.height)))
+                val w = ((bmp.width * sc).toInt() / 2) * 2
+                val h = ((bmp.height * sc).toInt() / 2) * 2
+                val scaled = Bitmap.createScaledBitmap(bmp, maxOf(2, w), maxOf(2, h), true)
+                val dst = File(out.parentFile, "slide_$i.jpg")
+                dst.outputStream().use { scaled.compress(Bitmap.CompressFormat.JPEG, 95, it) }
+                Triple(dst, scaled.width, scaled.height)
+            }
+        }
+        if (prepared.isEmpty()) throw IllegalStateException("No se pudieron leer las imágenes")
+        val durMs = withContext(Dispatchers.IO) {
+            val r = MediaMetadataRetriever()
+            try {
+                r.setDataSource(audio.absolutePath)
+                r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 15000L
+            } finally { runCatching { r.release() } }
+        }.coerceIn(2000L, 600000L)
+        val (_, ow, oh) = prepared.first()
+        val perUs = durMs * 1000L / prepared.size
+        withContext(Dispatchers.Main) {
+            suspendCancellableCoroutine<Unit> { cont ->
+                val handler = Handler(Looper.getMainLooper())
+                val pres = Presentation.createForWidthAndHeight(ow, oh, Presentation.LAYOUT_SCALE_TO_FIT)
+                @Suppress("DEPRECATION")
+                val imgs = prepared.map { (f, _, _) ->
+                    EditedMediaItem.Builder(
+                        MediaItem.Builder().setUri(Uri.fromFile(f)).setMimeType(MimeTypes.IMAGE_JPEG).build()
+                    )
+                        .setDurationUs(perUs)
+                        .setFrameRate(30)
+                        .setEffects(Effects(emptyList(), listOf(pres)))
+                        .build()
+                }
+                val audioItem = EditedMediaItem.Builder(MediaItem.fromUri(Uri.fromFile(audio))).build()
+                val composition = Composition.Builder(
+                    listOf(EditedMediaItemSequence(imgs), EditedMediaItemSequence(listOf(audioItem)))
+                ).build()
+                lateinit var poll: Runnable
+                val transformer = Transformer.Builder(context)
+                    .setVideoMimeType(MimeTypes.VIDEO_H264)
+                    .setAudioMimeType(MimeTypes.AUDIO_AAC)
+                    .setEncoderFactory(
+                        DefaultEncoderFactory.Builder(context)
+                            .setRequestedVideoEncoderSettings(VideoEncoderSettings.Builder().setBitrate(6_000_000).build())
+                            .setEnableFallback(true).build()
+                    )
+                    .addListener(object : Transformer.Listener {
+                        override fun onCompleted(composition: Composition, exportResult: ExportResult) {
+                            handler.removeCallbacks(poll); onProgress(100)
+                            if (cont.isActive) cont.resume(Unit)
+                        }
+                        override fun onError(composition: Composition, exportResult: ExportResult, exportException: ExportException) {
+                            handler.removeCallbacks(poll)
+                            if (cont.isActive) cont.resumeWithException(exportException)
+                        }
+                    })
+                    .build()
+                val holder = ProgressHolder()
+                poll = Runnable {
+                    if (transformer.getProgress(holder) == Transformer.PROGRESS_STATE_AVAILABLE) onProgress(holder.progress)
+                    handler.postDelayed(poll, 300)
+                }
+                out.delete()
+                transformer.start(composition, out.absolutePath)
+                handler.postDelayed(poll, 300)
+                cont.invokeOnCancellation { handler.post { handler.removeCallbacks(poll); transformer.cancel() } }
+            }
+        }
+        prepared.forEach { it.first.delete() }
     }
 }

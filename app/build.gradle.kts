@@ -12,8 +12,9 @@ android {
         applicationId = "com.cimaestrategica.estadoshd"
         minSdk = 29
         targetSdk = 35
-        versionCode = 5
-        versionName = "2.3"
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
+        versionCode = 6
+        versionName = "3.0"
     }
 
     signingConfigs {
@@ -47,6 +48,7 @@ android {
     }
     packaging {
         resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+        jniLibs { useLegacyPackaging = true }
     }
 }
 
@@ -65,4 +67,6 @@ dependencies {
     implementation("androidx.media3:media3-transformer:1.4.1")
     implementation("androidx.media3:media3-effect:1.4.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+    implementation("io.github.junkfood02.youtubedl-android:library:0.16.0")
+    implementation("io.github.junkfood02.youtubedl-android:ffmpeg:0.16.0")
 }

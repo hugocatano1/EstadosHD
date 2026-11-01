@@ -93,19 +93,20 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.IntentCompat
 import kotlinx.coroutines.delay
 
-const val APP_VERSION = "2.3"
+const val APP_VERSION = "3.0"
 const val AUTHOR = "Hugo Cataño"
 const val AUTHOR_WEB = "https://hugocatano.com"
 
 class MainActivity : ComponentActivity() {
 
     private val vm: MainViewModel by viewModels()
+    private val dlVm: DownloadViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         if (savedInstanceState == null) handleShare(intent)
-        setContent { EstadosTheme { AppScreen(vm) } }
+        setContent { EstadosTheme { AppScreen(vm, dlVm) } }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -115,7 +116,10 @@ class MainActivity : ComponentActivity() {
 
     private fun handleShare(intent: Intent?) {
         if (intent?.action == Intent.ACTION_SEND) {
-            IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)?.let { vm.load(it) }
+            val stream = IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
+            val text = intent.getStringExtra(Intent.EXTRA_TEXT)
+            if (stream != null && intent.type?.startsWith("video") == true) vm.load(stream)
+            else if (text != null) dlVm.openWithText(text)
         }
     }
 }
@@ -123,8 +127,11 @@ class MainActivity : ComponentActivity() {
 /* ======================= Raíz ======================= */
 
 @Composable
-fun AppScreen(vm: MainViewModel) {
+fun AppScreen(vm: MainViewModel, dlVm: DownloadViewModel) {
     val s by vm.state.collectAsState()
+    val d by dlVm.state.collectAsState()
+    var section by rememberSaveable { mutableIntStateOf(0) }
+    LaunchedEffect(d.openRequest) { if (d.openRequest > 0) section = 1 }
     val context = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
     var showAbout by remember { mutableStateOf(false) }
@@ -138,6 +145,7 @@ fun AppScreen(vm: MainViewModel) {
     fun pick() = picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
 
     LaunchedEffect(Unit) { vm.messages.collect { snackbar.showSnackbar(it) } }
+    LaunchedEffect(Unit) { dlVm.messages.collect { snackbar.showSnackbar(it) } }
 
     val view = LocalView.current
     DisposableEffect(s.processing) {
@@ -173,7 +181,17 @@ fun AppScreen(vm: MainViewModel) {
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0)
     ) { pad ->
         Box(Modifier.fillMaxSize().padding(pad)) {
-            if (info == null) HomeScreen(s.loading, onPick = { pick() }, onAbout = { showAbout = true })
+            if (info == null) {
+                Column(Modifier.fillMaxSize()) {
+                    Box(Modifier.weight(1f)) {
+                        if (section == 0) HomeScreen(s.loading, onPick = { pick() }, onAbout = { showAbout = true })
+                        else DownloaderScreen(d, dlVm, onAbout = { showAbout = true }, onCut = { f ->
+                            vm.load(Uri.fromFile(f)); section = 0
+                        })
+                    }
+                    BottomNav(section) { section = it }
+                }
+            }
             else EditorScreen(s, vm, info, onPick = { pick() }, onAbout = { showAbout = true }, countdown = countdown)
         }
     }
@@ -189,7 +207,7 @@ fun HomeScreen(loading: Boolean, onPick: () -> Unit, onAbout: () -> Unit) {
         Modifier
             .fillMaxSize()
             .background(Brush.verticalGradient(listOf(cs.primaryContainer.copy(alpha = 0.55f), cs.background, cs.background)))
-            .systemBarsPadding()
+            .statusBarsPadding()
             .padding(horizontal = 22.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {

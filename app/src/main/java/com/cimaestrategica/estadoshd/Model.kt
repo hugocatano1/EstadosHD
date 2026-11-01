@@ -216,7 +216,8 @@ object VideoMeta {
     suspend fun read(ctx: Context, uri: Uri): VideoInfo = withContext(Dispatchers.IO) {
         var name = "video.mp4"
         var size = 0L
-        ctx.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)
+        if (uri.scheme == "file") uri.path?.let { val f = File(it); name = f.name; size = f.length() }
+        else ctx.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)
             ?.use { c ->
                 if (c.moveToFirst()) {
                     val ni = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
@@ -266,6 +267,33 @@ object VideoMeta {
 /* ---------- Guardar en galería ---------- */
 
 object GallerySaver {
+    /** Guarda cualquier archivo en la carpeta correcta según su tipo. */
+    suspend fun saveAny(ctx: Context, files: List<File>): Int = withContext(Dispatchers.IO) {
+        val resolver = ctx.contentResolver
+        var ok = 0
+        for (f in files) {
+            val ext = f.extension.lowercase()
+            val (collection, mime, dir) = when (ext) {
+                "jpg", "jpeg", "png", "webp" -> Triple(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, if (ext == "png") "image/png" else if (ext == "webp") "image/webp" else "image/jpeg", Environment.DIRECTORY_PICTURES)
+                "mp3", "m4a", "opus", "aac", "ogg", "wav" -> Triple(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, if (ext == "mp3") "audio/mpeg" else "audio/mp4", Environment.DIRECTORY_MUSIC)
+                else -> Triple(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, if (ext == "webm") "video/webm" else "video/mp4", Environment.DIRECTORY_MOVIES)
+            }
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, f.name)
+                put(MediaStore.MediaColumns.MIME_TYPE, mime)
+                put(MediaStore.MediaColumns.RELATIVE_PATH, "$dir/EstadosHD")
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
+            }
+            val uri = resolver.insert(collection, values) ?: continue
+            try {
+                resolver.openOutputStream(uri)?.use { out -> f.inputStream().use { it.copyTo(out) } }
+                values.clear(); values.put(MediaStore.MediaColumns.IS_PENDING, 0)
+                resolver.update(uri, values, null, null); ok++
+            } catch (e: Exception) { resolver.delete(uri, null, null) }
+        }
+        ok
+    }
+
     suspend fun save(ctx: Context, files: List<File>): Int = withContext(Dispatchers.IO) {
         val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
         val resolver = ctx.contentResolver
@@ -344,6 +372,28 @@ object Sharer {
         }
         return if (pkg != null) send else Intent.createChooser(send, "Publicar partes")
     }
+
+    fun mimeOf(f: File): String = when (f.extension.lowercase()) {
+        "jpg", "jpeg" -> "image/jpeg"; "png" -> "image/png"; "webp" -> "image/webp"
+        "mp3" -> "audio/mpeg"; "m4a", "aac" -> "audio/mp4"; "opus", "ogg" -> "audio/ogg"
+        "webm" -> "video/webm"; else -> "video/mp4"
+    }
+
+    fun shareAny(ctx: Context, files: List<File>): Intent {
+        val uris = ArrayList(files.map { uri(ctx, it) })
+        val send = if (uris.size == 1) Intent(Intent.ACTION_SEND).apply { putExtra(Intent.EXTRA_STREAM, uris[0]) }
+        else Intent(Intent.ACTION_SEND_MULTIPLE).apply { putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris) }
+        send.type = if (files.map { mimeOf(it).substringBefore('/') }.distinct().size == 1) mimeOf(files[0]) else "*/*"
+        send.clipData = clipOf(ctx, uris)
+        send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        return Intent.createChooser(send, "Compartir")
+    }
+
+    fun openAny(ctx: Context, file: File): Intent =
+        Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri(ctx, file), mimeOf(file))
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
 
     fun preview(ctx: Context, file: File): Intent =
         Intent(Intent.ACTION_VIEW).apply {
