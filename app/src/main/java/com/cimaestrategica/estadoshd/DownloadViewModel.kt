@@ -45,7 +45,12 @@ data class DlState(
     val engineReady: Boolean = false,
     val engineMsg: String = "Preparando el motor de descargas…",
     val history: List<DlItem> = emptyList(),
-    val openRequest: Int = 0
+    val openRequest: Int = 0,
+    val errorTitle: String? = null,
+    val errorDetail: String? = null,
+    val errorAccount: String? = null,
+    val connected: Set<String> = emptySet(),
+    val loginAccount: String? = null
 )
 
 class DownloadViewModel(app: Application) : AndroidViewModel(app) {
@@ -59,6 +64,7 @@ class DownloadViewModel(app: Application) : AndroidViewModel(app) {
     private var processId = ""
 
     init {
+        _state.update { it.copy(connected = Accounts.connected(ctx)) }
         viewModelScope.launch {
             try {
                 DownloadEngine.ensureInit(ctx)
@@ -80,6 +86,39 @@ class DownloadViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setUrl(v: String) = _state.update { it.copy(url = v.trim(), info = if (v.trim() == it.url) it.info else null) }
 
+    fun clearError() = _state.update { it.copy(errorTitle = null, errorDetail = null, errorAccount = null) }
+
+    fun startLogin(key: String) = _state.update { it.copy(loginAccount = key) }
+
+    fun finishLogin(save: Boolean) {
+        val key = _state.value.loginAccount ?: return
+        val acc = Accounts.ALL.first { it.key == key }
+        val ok = save && Accounts.save(ctx, acc)
+        _state.update { it.copy(loginAccount = null, connected = Accounts.connected(ctx), errorTitle = if (ok) null else it.errorTitle) }
+        if (save) emit(if (ok) "${acc.name} conectado. Ya puedes descargar." else "No se detectó la sesión. Inicia sesión y luego toca «Listo».")
+        if (ok && _state.value.url.isNotBlank()) analyze()
+    }
+
+    fun disconnect(key: String) {
+        Accounts.disconnect(ctx, Accounts.ALL.first { it.key == key })
+        _state.update { it.copy(connected = Accounts.connected(ctx)) }
+        emit("Cuenta desconectada")
+    }
+
+    private fun fail(e: Exception, url: String) {
+        val raw = (e.message ?: e.toString()).trim()
+        val acc = Accounts.forUrl(url)
+        val needsLogin = acc != null && listOf("login", "cookies", "rate-limit", "rate limit", "not available", "empty media", "authentication", "private", "401", "403")
+            .any { it in raw.lowercase() }
+        _state.update {
+            it.copy(
+                errorTitle = friendly(raw),
+                errorDetail = raw.lines().filter { l -> l.isNotBlank() }.takeLast(6).joinToString("\n").take(900),
+                errorAccount = if (needsLogin || (acc != null && acc.key !in it.connected)) acc?.key else null
+            )
+        }
+    }
+
     fun setFormat(f: DlFormat) = _state.update { it.copy(format = f) }
 
     /** Llega un enlace compartido desde otra app. */
@@ -92,7 +131,7 @@ class DownloadViewModel(app: Application) : AndroidViewModel(app) {
     fun analyze() {
         val url = Sites.extractUrl(_state.value.url) ?: run { emit("Pega un enlace válido (https://…)"); return }
         if (_state.value.analyzing || _state.value.downloading) return
-        _state.update { it.copy(url = url, analyzing = true, info = null, thumb = null) }
+        _state.update { it.copy(url = url, analyzing = true, info = null, thumb = null, errorTitle = null, errorDetail = null, errorAccount = null) }
         viewModelScope.launch {
             try {
                 val info = DownloadEngine.analyze(ctx, url)
@@ -103,7 +142,7 @@ class DownloadViewModel(app: Application) : AndroidViewModel(app) {
                 }
             } catch (e: Exception) {
                 _state.update { it.copy(analyzing = false) }
-                emit(friendly(e.message))
+                fail(e, url)
             }
         }
     }
@@ -149,7 +188,7 @@ class DownloadViewModel(app: Application) : AndroidViewModel(app) {
                 throw e
             } catch (e: Exception) {
                 _state.update { it.copy(downloading = false, converting = false, status = "") }
-                emit(friendly(e.message))
+                fail(e, url)
             }
         }
     }
@@ -178,13 +217,14 @@ class DownloadViewModel(app: Application) : AndroidViewModel(app) {
     private fun friendly(msg: String?): String {
         val m = (msg ?: "").lowercase()
         return when {
-            "login" in m || "cookies" in m || "private" in m || "authentication" in m ->
-                "Este contenido es privado o la red pide iniciar sesión. Prueba con una publicación pública."
+            "login" in m || "cookies" in m || "private" in m || "authentication" in m || "not available" in m || "empty media" in m || "rate-limit" in m ->
+                "La red pide iniciar sesión para entregar este contenido. Conecta tu cuenta y vuelve a intentar."
             "unsupported url" in m -> "Este enlace no es compatible."
             "requested format" in m || "no video formats" in m -> "No hay ese formato. Prueba «Imagen» o «Fotos con sonido»."
             "unable to resolve" in m || "network" in m || "timed out" in m -> "Sin conexión o la red no respondió. Intenta de nuevo."
             "rate" in m && "limit" in m -> "La red limitó las descargas por un momento. Espera unos minutos."
-            else -> "No se pudo descargar. Toca «Actualizar motor» e intenta de nuevo."
+            "ssl" in m || "certificate" in m -> "Problema de conexión segura. Revisa la fecha/hora del celular o tu red."
+            else -> "No se pudo procesar este enlace. Revisa el detalle técnico."
         }
     }
 }

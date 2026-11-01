@@ -61,7 +61,14 @@ object Sites {
     }
 
     fun extractUrl(text: String): String? =
-        Regex("https?://[^\\s]+").find(text)?.value?.trimEnd('.', ',', ')', ']', '"', '\'')
+        Regex("https?://[^\\s]+").find(text)?.value?.trimEnd('.', ',', ')', ']', '"', '\'')?.let { clean(it) }
+
+    /** Quita parámetros de rastreo (?igsh=, ?psln=, ?utm_…) en redes donde no hacen falta. */
+    fun clean(url: String): String {
+        val u = url.lowercase()
+        val strip = listOf("instagram.", "instagr.am", "tiktok.", "threads.", "x.com", "twitter.", "pinterest.", "snapchat.")
+        return if (strip.any { it in u }) url.substringBefore('?').substringBefore('#') else url
+    }
 }
 
 object DownloadEngine {
@@ -91,6 +98,7 @@ object DownloadEngine {
     suspend fun analyze(ctx: Context, url: String): LinkInfo = withContext(Dispatchers.IO) {
         ensureInit(ctx)
         val req = YoutubeDLRequest(url)
+        addCookies(ctx, req, url)
         req.addOption("--playlist-items", "1")
         req.addOption("--no-warnings")
         val v = YoutubeDL.getInfo(req)
@@ -105,6 +113,12 @@ object DownloadEngine {
             hasVideo = hasVideo,
             site = Sites.detect(url).name
         )
+    }
+
+    private fun addCookies(ctx: Context, req: YoutubeDLRequest, url: String) {
+        val acc = Accounts.forUrl(url) ?: return
+        val f = Accounts.file(ctx, acc.key)
+        if (f.exists()) req.addOption("--cookies", f.absolutePath)
     }
 
     fun loadBitmap(url: String?): Bitmap? = try {
@@ -132,6 +146,7 @@ object DownloadEngine {
         dir.mkdirs()
         val before = dir.listFiles()?.map { it.absolutePath }?.toSet() ?: emptySet()
         val req = YoutubeDLRequest(url)
+        addCookies(ctx, req, url)
         req.addOption("-o", dir.absolutePath + "/%(title).60B [%(id)s].%(ext)s")
         req.addOption("--no-mtime")
         req.addOption("--restrict-filenames")

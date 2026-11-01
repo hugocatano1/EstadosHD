@@ -93,7 +93,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.IntentCompat
 import kotlinx.coroutines.delay
 
-const val APP_VERSION = "3.0"
+const val APP_VERSION = "3.1"
 const val AUTHOR = "Hugo Cataño"
 const val AUTHOR_WEB = "https://hugocatano.com"
 
@@ -197,6 +197,8 @@ fun AppScreen(vm: MainViewModel, dlVm: DownloadViewModel) {
     }
 
     if (showAbout) AboutDialog { showAbout = false }
+    val login = d.loginAccount
+    if (login != null) LoginOverlay(login) { dlVm.finishLogin(it) }
 }
 
 /* ======================= Inicio ======================= */
