@@ -66,6 +66,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun clearVideo() {
         if (busy()) return
         thumbJob?.cancel()
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) { File(ctx.cacheDir, "segments").deleteRecursively() }
         _state.update { it.copy(info = null, segments = emptyList(), queueActive = false, trimStartMs = 0, trimEndMs = 0) }
     }
 

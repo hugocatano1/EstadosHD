@@ -318,13 +318,7 @@ fun HistoryRow(item: DlItem, ctx: Context, onCut: (java.io.File) -> Unit, onRemo
             Text("${item.site} · ${item.format.title} · ${fmtSize(item.size)}", fontSize = 11.sp, color = cs.onSurfaceVariant, maxLines = 1)
             if (item.saved) Text("En tu galería", fontSize = 10.5.sp, color = GGreen, fontWeight = FontWeight.SemiBold)
         }
-        Box(Modifier.clickable { Sharer.safeStart(ctx, Sharer.openAny(ctx, item.files.first())) }) { Icon3D(R.drawable.ms_play_arrow, GTeal, 34.dp) }
-        Spacer(Modifier.width(6.dp))
-        Box(Modifier.clickable { Sharer.safeStart(ctx, Sharer.shareAny(ctx, item.files)) }) { Icon3D(R.drawable.ms_share, GBlue, 34.dp) }
-        if (item.isVideo) {
-            Spacer(Modifier.width(6.dp))
-            Box(Modifier.clickable { onCut(item.files.first { it.extension.lowercase() in listOf("mp4", "webm", "mkv", "mov") }) }) { Icon3D(R.drawable.ms_content_cut, GRed, 34.dp) }
-        }
+        // (fila antigua sin uso)
     }
 }
 
@@ -611,7 +605,10 @@ fun HistoryItemRow(item: DlItem, selected: Boolean, selMode: Boolean, ctx: Conte
             .clip(shape)
             .background(if (selected) lerp(cs.surface, GBlue, 0.08f) else cs.surface)
             .border(if (selected) 2.dp else 0.dp, if (selected) GBlue else Color.Transparent, shape)
-            .clickable { if (selMode) onToggle() else if (item.exists) Sharer.safeStart(ctx, Sharer.openAny(ctx, item.files.first { f -> f.exists() })) }
+            .clickable {
+                if (selMode) onToggle()
+                else item.uris(ctx).firstOrNull()?.let { (u, mime) -> Sharer.safeStart(ctx, Sharer.openUri(u, mime)) }
+            }
             .padding(10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -632,7 +629,10 @@ fun HistoryItemRow(item: DlItem, selected: Boolean, selMode: Boolean, ctx: Conte
             if (item.sentToStatus) Text("Enviado a estados", fontSize = 10.sp, color = Color(0xFFD62976), fontWeight = FontWeight.SemiBold)
         }
         if (!selMode && item.exists) {
-            Box(Modifier.clickable { Sharer.safeStart(ctx, Sharer.shareAny(ctx, item.files.filter { f -> f.exists() })) }) { Icon3D(R.drawable.ms_share, GBlue, 32.dp) }
+            Box(Modifier.clickable {
+                val us = item.uris(ctx)
+                if (us.isNotEmpty()) Sharer.safeStart(ctx, Sharer.shareUris(ctx, us.map { p -> p.first }, us.map { p -> p.second }))
+            }) { Icon3D(R.drawable.ms_share, GBlue, 32.dp) }
             if (item.isVideo) {
                 Spacer(Modifier.width(6.dp))
                 Box(Modifier.clickable(onClick = onStatus)) { Icon3D(R.drawable.ms_auto_awesome, Color(0xFFD62976), 32.dp) }

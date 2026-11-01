@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
@@ -93,7 +94,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.IntentCompat
 import kotlinx.coroutines.delay
 
-const val APP_VERSION = "3.4.1"
+const val APP_VERSION = "3.5"
 const val AUTHOR = "Hugo Cataño"
 const val AUTHOR_WEB = "https://hugocatano.com"
 
@@ -134,7 +135,7 @@ fun AppScreen(vm: MainViewModel, dlVm: DownloadViewModel) {
     LaunchedEffect(d.openRequest) { if (d.openRequest > 0) section = 1 }
     LaunchedEffect(d.pipeline?.n) {
         val p = d.pipeline ?: return@LaunchedEffect
-        vm.runPipeline(Uri.fromFile(p.file), p.platformId)
+        vm.runPipeline(p.uri, p.platformId)
         dlVm.consumePipeline()
         section = 0
     }
@@ -181,10 +182,19 @@ fun AppScreen(vm: MainViewModel, dlVm: DownloadViewModel) {
     }
 
     val info = s.info
+    // 1. Botón atrás: volver en lugar de cerrar la app
+    androidx.activity.compose.BackHandler(enabled = info != null || section != 0) {
+        when {
+            info != null && s.processing -> vm.emit("Espera a que terminen las partes o toca la X para cancelar")
+            info != null && s.queueActive -> vm.pauseQueue()
+            info != null -> vm.clearVideo()
+            else -> section = 0
+        }
+    }
     Scaffold(
         containerColor = cs.background,
         snackbarHost = {
-            SnackbarHost(snackbar, Modifier.navigationBarsPadding().padding(bottom = 92.dp)) { data ->
+            SnackbarHost(snackbar, Modifier.navigationBarsPadding().padding(bottom = 112.dp)) { data ->
                 androidx.compose.material3.Snackbar(
                     snackbarData = data,
                     shape = RoundedCornerShape(18.dp),
@@ -224,16 +234,25 @@ fun AppScreen(vm: MainViewModel, dlVm: DownloadViewModel) {
 
 @Composable
 fun HomeScreen(loading: Boolean, onPick: () -> Unit, onAbout: () -> Unit) {
-    Column(
+    androidx.compose.foundation.layout.BoxWithConstraints(
         Modifier
             .fillMaxSize()
             .background(Brush.verticalGradient(listOf(cs.primaryContainer.copy(alpha = 0.55f), cs.background, cs.background)))
             .statusBarsPadding()
+    ) {
+    val minH = maxHeight
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .heightIn(min = minH)
             .padding(horizontal = 22.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.SpaceBetween
     ) {
         TopBar(onAbout, trailing = null)
-        Spacer(Modifier.weight(1f))
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Spacer(Modifier.height(12.dp))
         HeroArt(loading)
         Spacer(Modifier.height(28.dp))
         Text(
@@ -254,8 +273,10 @@ fun HomeScreen(loading: Boolean, onPick: () -> Unit, onAbout: () -> Unit) {
             FeatureTile(R.drawable.ms_content_cut, GRed, "Corte exacto", "Al cuadro", Modifier.weight(1f))
             FeatureTile(R.drawable.ms_playlist_play, GGreen, "En orden", "Parte por parte", Modifier.weight(1f))
         }
-        Spacer(Modifier.weight(1f))
+        Spacer(Modifier.height(12.dp))
+        }
         Credits()
+    }
     }
 }
 
@@ -837,6 +858,7 @@ fun PublishSheet(
             Modifier
                 .fillMaxWidth()
                 .imePadding()
+                .navigationBarsPadding()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 28.dp)

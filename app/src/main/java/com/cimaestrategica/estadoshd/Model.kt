@@ -269,9 +269,10 @@ object VideoMeta {
 
 object GallerySaver {
     /** Guarda cualquier archivo en la carpeta correcta según su tipo. */
-    suspend fun saveAny(ctx: Context, files: List<File>): List<String> = withContext(Dispatchers.IO) {
+    /** Devuelve, alineado con [files], la Uri de galería de cada archivo (null si falló). */
+    suspend fun saveAny(ctx: Context, files: List<File>): List<String?> = withContext(Dispatchers.IO) {
         val resolver = ctx.contentResolver
-        val ok = mutableListOf<String>()
+        val ok = mutableListOf<String?>()
         for (f in files) {
             val ext = f.extension.lowercase()
             val (collection, mime, dir) = when (ext) {
@@ -285,12 +286,12 @@ object GallerySaver {
                 put(MediaStore.MediaColumns.RELATIVE_PATH, "$dir/EstadosHD")
                 put(MediaStore.MediaColumns.IS_PENDING, 1)
             }
-            val uri = resolver.insert(collection, values) ?: continue
+            val uri = resolver.insert(collection, values) ?: run { ok += null; continue }
             try {
                 resolver.openOutputStream(uri)?.use { out -> f.inputStream().use { it.copyTo(out) } }
                 values.clear(); values.put(MediaStore.MediaColumns.IS_PENDING, 0)
                 resolver.update(uri, values, null, null); ok += uri.toString()
-            } catch (e: Exception) { resolver.delete(uri, null, null) }
+            } catch (e: Exception) { resolver.delete(uri, null, null); ok += null }
         }
         ok
     }
@@ -385,6 +386,18 @@ object Sharer {
         val send = if (uris.size == 1) Intent(Intent.ACTION_SEND).apply { putExtra(Intent.EXTRA_STREAM, uris[0]) }
         else Intent(Intent.ACTION_SEND_MULTIPLE).apply { putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris) }
         send.type = if (files.map { mimeOf(it).substringBefore('/') }.distinct().size == 1) mimeOf(files[0]) else "*/*"
+        send.clipData = clipOf(ctx, uris)
+        send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        return Intent.createChooser(send, "Compartir")
+    }
+
+    fun openUri(u: Uri, mime: String): Intent =
+        Intent(Intent.ACTION_VIEW).apply { setDataAndType(u, mime); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+
+    fun shareUris(ctx: Context, uris: List<Uri>, mimes: List<String>): Intent {
+        val send = if (uris.size == 1) Intent(Intent.ACTION_SEND).apply { putExtra(Intent.EXTRA_STREAM, uris[0]) }
+        else Intent(Intent.ACTION_SEND_MULTIPLE).apply { putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris)) }
+        send.type = if (mimes.map { it.substringBefore('/') }.distinct().size == 1) mimes[0] else "*/*"
         send.clipData = clipOf(ctx, uris)
         send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         return Intent.createChooser(send, "Compartir")

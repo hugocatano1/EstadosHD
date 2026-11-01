@@ -34,16 +34,43 @@ data class DlItem(
     val date: Long = System.currentTimeMillis(),
     val thumbPath: String? = null,
     val gallery: List<String> = emptyList(),
-    val sentToStatus: Boolean = false
+    val sentToStatus: Boolean = false,
+    val bytes: Long = 0,
+    val alive: Boolean = true
 ) {
-    val isVideo get() = files.any { it.extension.lowercase() in listOf("mp4", "webm", "mkv", "mov") }
-    val videoFile get() = files.firstOrNull { it.extension.lowercase() in listOf("mp4", "webm", "mkv", "mov") && it.exists() }
-    val exists get() = files.any { it.exists() }
-    val size get() = files.filter { it.exists() }.sumOf { it.length() }
+    val isVideo get() = files.any { it.extension.lowercase() in VIDEO_EXT }
+    val size get() = if (alive) bytes else 0L
+    val exists get() = alive
+
+    /** Uri utilizable de cada archivo: la copia de la galería o, si no hay, el archivo interno. */
+    fun uris(ctx: Context): List<Pair<Uri, String>> = files.mapIndexedNotNull { i, f ->
+        val mime = Sharer.mimeOf(f)
+        val g = gallery.getOrNull(i)?.takeIf { it.isNotBlank() }
+        when {
+            g != null -> Uri.parse(g) to mime
+            f.exists() -> Sharer.uri(ctx, f) to mime
+            else -> null
+        }
+    }
+
+    fun videoUri(ctx: Context): Uri? {
+        val i = files.indexOfFirst { it.extension.lowercase() in VIDEO_EXT }
+        if (i < 0) return null
+        val g = gallery.getOrNull(i)?.takeIf { it.isNotBlank() }
+        return if (g != null) Uri.parse(g) else files[i].takeIf { it.exists() }?.let { Uri.fromFile(it) }
+    }
+
+    companion object { val VIDEO_EXT = listOf("mp4", "webm", "mkv", "mov") }
 }
 
+/** ¿Sigue existiendo el archivo (en galería o interno)? */
+fun isAlive(ctx: Context, item: DlItem): Boolean =
+    item.files.any { it.exists() } || item.gallery.any { g ->
+        g.isNotBlank() && runCatching { ctx.contentResolver.openFileDescriptor(Uri.parse(g), "r")?.use { true } ?: false }.getOrDefault(false)
+    }
+
 /** Pedido de la línea de producción: descargado → partes HD → publicar. */
-data class PipelineReq(val file: File, val platformId: String, val n: Int)
+data class PipelineReq(val uri: Uri, val platformId: String, val n: Int)
 
 data class DlState(
     val url: String = "",
@@ -86,8 +113,9 @@ object HistoryStore {
                 thumb = tp?.let { BitmapFactory.decodeFile(it) },
                 saved = o.optBoolean("saved"), date = o.optLong("date"), thumbPath = tp,
                 gallery = o.optJSONArray("gallery")?.let { a -> (0 until a.length()).map { a.getString(it) } } ?: emptyList(),
-                sentToStatus = o.optBoolean("status")
-            )
+                sentToStatus = o.optBoolean("status"),
+                bytes = o.optLong("bytes")
+            ).let { d -> d.copy(alive = isAlive(ctx, d)) }
         }
     } catch (e: Exception) { emptyList() }
 
@@ -97,7 +125,7 @@ object HistoryStore {
             arr.put(JSONObject().apply {
                 put("id", it2.id); put("title", it2.title); put("site", it2.site); put("format", it2.format.name)
                 put("files", JSONArray(it2.files.map { f -> f.absolutePath })); put("thumb", it2.thumbPath ?: "")
-                put("saved", it2.saved); put("date", it2.date); put("gallery", JSONArray(it2.gallery)); put("status", it2.sentToStatus)
+                put("saved", it2.saved); put("date", it2.date); put("gallery", JSONArray(it2.gallery.map { g -> g ?: "" })); put("status", it2.sentToStatus); put("bytes", it2.bytes)
             })
         }
         file(ctx).writeText(arr.toString())
@@ -177,7 +205,7 @@ class DownloadViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Enviar un video del historial a la línea de estados. */
     fun sendToStatus(item: DlItem) {
-        val f = item.videoFile ?: run { emit("Este archivo ya no existe"); return }
+        val f = item.videoUri(ctx) ?: run { emit("Este archivo ya no existe"); return }
         pipeCounter++
         _state.update { s ->
             s.copy(
@@ -271,21 +299,28 @@ class DownloadViewModel(app: Application) : AndroidViewModel(app) {
                     } else if (video != null) files = listOf(video)
                 }
                 if (files.isEmpty()) throw IllegalStateException("No se encontró contenido descargable")
+                val bytes = files.sumOf { it.length() }
                 val uris = GallerySaver.saveAny(ctx, files)
+                // Una sola copia: si quedó en la galería, se borra la copia interna (ahorra espacio)
+                withContext(Dispatchers.IO) {
+                    files.forEachIndexed { i, f -> if (uris.getOrNull(i) != null) f.delete() }
+                    if (dir.listFiles()?.isEmpty() == true) dir.delete()
+                }
                 val id = System.currentTimeMillis()
                 val tp = withContext(Dispatchers.IO) { HistoryStore.saveThumb(ctx, id, thumb) }
-                var item = DlItem(id, title, Sites.detect(url).name, format, files, thumb, uris.isNotEmpty(), id, tp, uris)
+                var item = DlItem(id, title, Sites.detect(url).name, format, files, thumb, uris.any { it != null }, id, tp,
+                    uris.map { it ?: "" }, bytes = bytes)
                 val goStatus = auto && item.isVideo
                 if (goStatus) item = item.copy(sentToStatus = true)
                 _state.update { it.copy(downloading = false, converting = false, progress = 1f, status = "", history = listOf(item) + it.history) }
                 persist()
                 if (goStatus) {
                     pipeCounter++
-                    _state.update { it.copy(pipeline = PipelineReq(item.videoFile!!, autoPlat, pipeCounter)) }
+                    _state.update { it.copy(pipeline = PipelineReq(item.videoUri(ctx)!!, autoPlat, pipeCounter)) }
                     emit("Descargado. Creando las partes en HD…")
                 } else {
                     if (auto && !item.isVideo) emit("Descargado. Solo los videos se envían a estados.")
-                    else emit(if (uris.isNotEmpty()) "¡Descargado! Guardado en tu galería (EstadosHD)" else "¡Descargado!")
+                    else emit(if (item.saved) "¡Descargado! Guardado en tu galería (EstadosHD)" else "¡Descargado!")
                 }
             } catch (e: CancellationException) {
                 _state.update { it.copy(downloading = false, converting = false, status = "") }
@@ -331,9 +366,10 @@ class DownloadViewModel(app: Application) : AndroidViewModel(app) {
             var freed = 0L
             if (permanent) withContext(Dispatchers.IO) {
                 for (it in targets) {
-                    it.files.forEach { f -> if (f.exists()) { freed += f.length(); f.delete() } }
+                    if (it.alive) freed += it.bytes
+                    it.files.forEach { f -> if (f.exists()) f.delete() }
                     it.files.mapNotNull { f -> f.parentFile }.distinct().forEach { d -> if (d.listFiles()?.isEmpty() == true) d.delete() }
-                    it.gallery.forEach { u -> runCatching { ctx.contentResolver.delete(Uri.parse(u), null, null) } }
+                    it.gallery.filter { g -> g.isNotBlank() }.forEach { u -> runCatching { ctx.contentResolver.delete(Uri.parse(u), null, null) } }
                 }
             }
             withContext(Dispatchers.IO) { targets.forEach { it.thumbPath?.let { p -> File(p).delete() } } }
