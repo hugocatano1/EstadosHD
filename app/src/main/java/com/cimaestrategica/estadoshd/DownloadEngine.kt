@@ -7,6 +7,7 @@ import com.yausername.ffmpeg.FFmpeg
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -96,6 +97,19 @@ object DownloadEngine {
     fun version(ctx: Context): String = try { YoutubeDL.version(ctx.applicationContext) ?: "" } catch (e: Exception) { "" }
 
     suspend fun analyze(ctx: Context, url: String): LinkInfo = withContext(Dispatchers.IO) {
+        var igError: String? = null
+        if (IgExtractor.isInstagram(url)) {
+            try {
+                val p = runInterruptible { IgExtractor.fetch(url) }
+                return@withContext LinkInfo(url, p.title, p.user, p.durationSec, p.cover, p.hasVideo, "Instagram")
+            } catch (e: Exception) { igError = e.message }
+        }
+        try { analyzeYtdlp(ctx, url) } catch (e: Exception) {
+            throw Exception(listOfNotNull(igError, e.message).joinToString("\n"))
+        }
+    }
+
+    private suspend fun analyzeYtdlp(ctx: Context, url: String): LinkInfo = withContext(Dispatchers.IO) {
         ensureInit(ctx)
         val req = YoutubeDLRequest(url)
         addCookies(ctx, req, url)
@@ -142,8 +156,10 @@ object DownloadEngine {
         processId: String,
         onProgress: (Float, String) -> Unit
     ): List<File> = withContext(Dispatchers.IO) {
-        ensureInit(ctx)
         dir.mkdirs()
+        val ig = if (IgExtractor.isInstagram(url)) (IgExtractor.cached(url) ?: runCatching { runInterruptible { IgExtractor.fetch(url) } }.getOrNull()) else null
+        if (ig != null) return@withContext downloadIg(ctx, ig, format, dir, onProgress)
+        ensureInit(ctx)
         val before = dir.listFiles()?.map { it.absolutePath }?.toSet() ?: emptySet()
         val req = YoutubeDLRequest(url)
         addCookies(ctx, req, url)
@@ -186,6 +202,47 @@ object DownloadEngine {
         }
         val after = dir.listFiles()?.filter { it.absolutePath !in before && it.isFile && !it.name.endsWith(".part") && !it.name.endsWith(".ytdl") }
         after?.sortedBy { it.name } ?: emptyList()
+    }
+
+    private suspend fun downloadIg(ctx: Context, p: IgExtractor.Post, format: DlFormat, dir: File, onProgress: (Float, String) -> Unit): List<File> {
+        val base = (p.user.ifBlank { "instagram" } + "_" + System.currentTimeMillis()).replace(Regex("[^A-Za-z0-9_.-]"), "_")
+        val videos = p.items.filter { it.isVideo }
+        val images = p.items.filter { !it.isVideo }.ifEmpty { p.items.mapNotNull { m -> m.thumb?.let { IgExtractor.Media(false, it, it) } } }
+        suspend fun get(list: List<IgExtractor.Media>, ext: String, tag: String): List<File> {
+            val out = mutableListOf<File>()
+            list.forEachIndexed { i, m ->
+                val f = File(dir, "${base}_${i + 1}.$ext")
+                runInterruptible { IgExtractor.download(m.url, f) { fr -> onProgress(((i + fr) / list.size) * 100f, "$tag ${i + 1} de ${list.size}") } }
+                out += f
+            }
+            return out
+        }
+        return when (format) {
+            DlFormat.VIDEO_BEST, DlFormat.VIDEO_720 ->
+                if (videos.isNotEmpty()) get(videos, "mp4", "Video") else get(images, "jpg", "Imagen")
+            DlFormat.IMAGE -> get(images.ifEmpty { videos.mapNotNull { m -> m.thumb?.let { IgExtractor.Media(false, it, it) } } }, "jpg", "Imagen")
+            DlFormat.AUDIO_MP3 -> {
+                if (p.audioUrl != null) {
+                    val f = File(dir, "$base.m4a"); runInterruptible { IgExtractor.download(p.audioUrl, f) { fr -> onProgress(fr * 100f, "Audio") } }; listOf(f)
+                } else if (videos.isNotEmpty()) {
+                    val v = get(videos.take(1), "mp4", "Video").first()
+                    onProgress(0f, "Extrayendo audio…")
+                    val a = File(dir, "$base.m4a")
+                    VideoProcessor(ctx).extractAudio(v, a) { pr -> onProgress(pr.toFloat(), "Extrayendo audio…") }
+                    v.delete(); listOf(a)
+                } else throw IllegalStateException("Esta publicación no tiene audio")
+            }
+            DlFormat.SLIDESHOW -> {
+                if (videos.isNotEmpty()) get(videos, "mp4", "Video")
+                else {
+                    val imgs = get(images, "jpg", "Imagen")
+                    if (p.audioUrl != null) {
+                        val f = File(dir, "$base.m4a"); runInterruptible { IgExtractor.download(p.audioUrl, f) { fr -> onProgress(fr * 100f, "Música") } }
+                        imgs + f
+                    } else imgs
+                }
+            }
+        }
     }
 
     fun cancel(processId: String) {

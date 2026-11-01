@@ -218,7 +218,7 @@ class DownloadViewModel(app: Application) : AndroidViewModel(app) {
         val m = (msg ?: "").lowercase()
         return when {
             "login" in m || "cookies" in m || "private" in m || "authentication" in m || "not available" in m || "empty media" in m || "rate-limit" in m ->
-                "La red pide iniciar sesión para entregar este contenido. Conecta tu cuenta y vuelve a intentar."
+                "La red bloqueó la consulta pública o la publicación es privada. Espera un momento y reintenta, o toca «Actualizar»."
             "unsupported url" in m -> "Este enlace no es compatible."
             "requested format" in m || "no video formats" in m -> "No hay ese formato. Prueba «Imagen» o «Fotos con sonido»."
             "unable to resolve" in m || "network" in m || "timed out" in m -> "Sin conexión o la red no respondió. Intenta de nuevo."

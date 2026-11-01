@@ -227,4 +227,32 @@ class VideoProcessor(private val context: Context) {
         }
         prepared.forEach { it.first.delete() }
     }
+
+    /** Extrae solo el audio (AAC en .m4a). */
+    suspend fun extractAudio(input: File, out: File, onProgress: (Int) -> Unit) = withContext(Dispatchers.Main) {
+        suspendCancellableCoroutine<Unit> { cont ->
+            val handler = Handler(Looper.getMainLooper())
+            val item = EditedMediaItem.Builder(MediaItem.fromUri(Uri.fromFile(input))).setRemoveVideo(true).build()
+            lateinit var poll: Runnable
+            val t = Transformer.Builder(context)
+                .setAudioMimeType(MimeTypes.AUDIO_AAC)
+                .addListener(object : Transformer.Listener {
+                    override fun onCompleted(composition: Composition, exportResult: ExportResult) {
+                        handler.removeCallbacks(poll); onProgress(100); if (cont.isActive) cont.resume(Unit)
+                    }
+                    override fun onError(composition: Composition, exportResult: ExportResult, exportException: ExportException) {
+                        handler.removeCallbacks(poll); if (cont.isActive) cont.resumeWithException(exportException)
+                    }
+                }).build()
+            val holder = ProgressHolder()
+            poll = Runnable {
+                if (t.getProgress(holder) == Transformer.PROGRESS_STATE_AVAILABLE) onProgress(holder.progress)
+                handler.postDelayed(poll, 300)
+            }
+            out.delete()
+            t.start(item, out.absolutePath)
+            handler.postDelayed(poll, 300)
+            cont.invokeOnCancellation { handler.post { handler.removeCallbacks(poll); t.cancel() } }
+        }
+    }
 }

@@ -102,8 +102,6 @@ fun DownloaderScreen(d: DlState, vm: DownloadViewModel, onAbout: () -> Unit, onC
             Spacer(Modifier.height(12.dp))
             ErrorCard(d, vm)
         }
-        Spacer(Modifier.height(12.dp))
-        AccountsCard(d, vm)
         val info = d.info
         if (info != null) {
             Spacer(Modifier.height(12.dp))
@@ -139,7 +137,7 @@ fun DownloaderScreen(d: DlState, vm: DownloadViewModel, onAbout: () -> Unit, onC
             TextButton(onClick = { vm.updateEngine() }) { Text("Actualizar") }
         }
         Text(
-            "Descarga solo contenido propio o con permiso de su autor. Las publicaciones privadas no se pueden descargar.",
+            "Sin iniciar sesión: funciona con publicaciones públicas. Descarga solo contenido propio o con permiso de su autor.",
             fontSize = 11.sp, color = cs.onSurfaceVariant, lineHeight = 15.sp, modifier = Modifier.padding(horizontal = 6.dp, vertical = 10.dp)
         )
         Credits()
@@ -383,7 +381,7 @@ fun ErrorCard(d: DlState, vm: DownloadViewModel) {
             Text(d.errorTitle ?: "", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = cs.onSurface, lineHeight = 19.sp, modifier = Modifier.weight(1f))
             IconButton(onClick = { vm.clearError() }) { Icon(painterResource(R.drawable.ms_close), "Cerrar", tint = cs.onSurfaceVariant) }
         }
-        val accKey = d.errorAccount
+        val accKey: String? = null
         if (accKey != null) {
             val acc = Accounts.ALL.first { it.key == accKey }
             Spacer(Modifier.height(10.dp))
