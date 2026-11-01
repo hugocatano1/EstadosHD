@@ -93,7 +93,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.IntentCompat
 import kotlinx.coroutines.delay
 
-const val APP_VERSION = "3.4"
+const val APP_VERSION = "3.4.1"
 const val AUTHOR = "Hugo Cataño"
 const val AUTHOR_WEB = "https://hugocatano.com"
 
@@ -183,7 +183,17 @@ fun AppScreen(vm: MainViewModel, dlVm: DownloadViewModel) {
     val info = s.info
     Scaffold(
         containerColor = cs.background,
-        snackbarHost = { SnackbarHost(snackbar) },
+        snackbarHost = {
+            SnackbarHost(snackbar, Modifier.navigationBarsPadding().padding(bottom = 92.dp)) { data ->
+                androidx.compose.material3.Snackbar(
+                    snackbarData = data,
+                    shape = RoundedCornerShape(18.dp),
+                    containerColor = cs.inverseSurface,
+                    contentColor = cs.inverseOnSurface,
+                    modifier = Modifier.padding(horizontal = 12.dp)
+                )
+            }
+        },
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0)
     ) { pad ->
         Box(Modifier.fillMaxSize().padding(pad)) {
