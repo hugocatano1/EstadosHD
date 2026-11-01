@@ -198,6 +198,11 @@ class DownloadViewModel(app: Application) : AndroidViewModel(app) {
         if (save) emit(if (ok) "${acc.name} conectado" else "No se detectó la sesión")
     }
 
+    fun disconnect(key: String) {
+        Accounts.disconnect(ctx, Accounts.ALL.first { it.key == key })
+        _state.update { it.copy(connected = Accounts.connected(ctx)) }
+    }
+
     fun openWithText(text: String) {
         val u = Sites.extractUrl(text) ?: return
         _state.update { it.copy(url = u, info = null, openRequest = it.openRequest + 1) }
