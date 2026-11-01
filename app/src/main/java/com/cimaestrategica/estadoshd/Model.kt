@@ -144,7 +144,8 @@ data class UiState(
     val currentProgress: Int = 0,
     val queueActive: Boolean = false,
     val queueIndex: Int = 0,
-    val launchedIndex: Int = -1
+    val launchedIndex: Int = -1,
+    val awaitingConfirm: Boolean = false
 ) {
     val allReady get() = segments.isNotEmpty() && segments.all { it.file != null }
     val readyCount get() = segments.count { it.file != null }

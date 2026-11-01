@@ -228,7 +228,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun startQueue() {
         if (!_state.value.allReady) return
-        _state.update { it.copy(queueActive = true, queueIndex = 0, launchedIndex = -1) }
+        _state.update { it.copy(queueActive = true, queueIndex = 0, launchedIndex = -1, awaitingConfirm = false) }
     }
 
     fun pauseQueue() = _state.update { it.copy(queueActive = false) }
@@ -236,24 +236,36 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun resumeQueue() {
         val s = _state.value
         if (s.queueIndex >= s.segments.size) return
-        _state.update { it.copy(queueActive = true, launchedIndex = -1) }
+        _state.update { it.copy(queueActive = true, launchedIndex = -1, awaitingConfirm = false) }
     }
 
     fun markLaunched(i: Int) = _state.update { it.copy(launchedIndex = i) }
 
-    /** Se llama cuando el usuario regresa de la red social. */
+    /** El usuario regresó de la red social: esperamos su confirmación antes de enviar la siguiente. */
     fun onQueueReturned() {
+        val s = _state.value
+        if (!s.queueActive) return
+        _state.update { it.copy(awaitingConfirm = true) }
+    }
+
+    /** Confirmó que la parte actual YA terminó de subir: ahora sí se envía la siguiente. */
+    fun confirmUploaded() {
         val s = _state.value
         if (!s.queueActive) return
         val i = s.queueIndex
         markShared(i)
         val next = i + 1
         if (next >= s.segments.size) {
-            _state.update { it.copy(queueActive = false, queueIndex = next) }
-            emit("¡Completo! Las ${s.segments.size} partes se enviaron en orden")
+            _state.update { it.copy(queueActive = false, awaitingConfirm = false, queueIndex = next) }
+            emit("¡Completo! Las ${s.segments.size} partes quedaron publicadas en orden")
         } else {
-            _state.update { it.copy(queueIndex = next) }
+            _state.update { it.copy(queueIndex = next, awaitingConfirm = false) }
         }
+    }
+
+    /** La parte no se publicó o falló: volver a abrirla. */
+    fun retryCurrent() {
+        _state.update { it.copy(awaitingConfirm = false, launchedIndex = -1) }
     }
 
     fun saveAll() {

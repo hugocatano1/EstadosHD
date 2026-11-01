@@ -93,7 +93,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.IntentCompat
 import kotlinx.coroutines.delay
 
-const val APP_VERSION = "2.2"
+const val APP_VERSION = "2.3"
 const val AUTHOR = "Hugo Cataño"
 const val AUTHOR_WEB = "https://hugocatano.com"
 
@@ -146,11 +146,12 @@ fun AppScreen(vm: MainViewModel) {
     }
 
     var countdown by remember { mutableIntStateOf(0) }
-    LaunchedEffect(s.queueActive, s.queueIndex) {
-        if (!s.queueActive) { countdown = 0; return@LaunchedEffect }
+    LaunchedEffect(s.queueActive, s.queueIndex, s.awaitingConfirm, s.launchedIndex) {
+        if (!s.queueActive || s.awaitingConfirm) { countdown = 0; return@LaunchedEffect }
         val i = s.queueIndex
         if (i >= s.segments.size || s.launchedIndex == i) return@LaunchedEffect
-        if (i > 0) { for (c in 3 downTo 1) { countdown = c; delay(1000) } }
+        countdown = 1
+        delay(700)
         countdown = 0
         val f = s.segments.getOrNull(i)?.file ?: return@LaunchedEffect
         vm.markLaunched(i)
@@ -701,24 +702,48 @@ fun ActionBar(s: UiState, vm: MainViewModel, countdown: Int, onPublish: () -> Un
                         Box(Modifier.clickable { vm.cancel() }) { Icon3D(R.drawable.ms_close, GRed, 40.dp) }
                     }
                 }
+                s.queueActive && s.awaitingConfirm -> {
+                    val cur = s.queueIndex + 1
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon3D(R.drawable.ms_hourglass_top, GYellow, 42.dp)
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("¿La parte $cur de $n ya terminó de subir?", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = cs.onSurface)
+                            Text(
+                                "En WhatsApp › Novedades › Mi estado, debe verse sin el relojito. Hasta que no confirmes, la parte ${cur + 1} no se envía.",
+                                fontSize = 12.sp, color = cs.onSurfaceVariant, lineHeight = 16.sp
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Button3D(
+                            if (cur >= n) "Sí, terminar" else "Sí, enviar parte ${cur + 1}",
+                            R.drawable.ms_check_circle, Modifier.weight(1f), face = GGreen
+                        ) { vm.confirmUploaded() }
+                        Spacer(Modifier.width(8.dp))
+                        Button3D(null, R.drawable.ms_refresh, Modifier.width(60.dp), face = cs.primaryContainer, content = cs.onPrimaryContainer) {
+                            vm.retryCurrent()
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Button3D(null, R.drawable.ms_pause, Modifier.width(60.dp), face = cs.surfaceVariant, content = cs.onSurfaceVariant) {
+                            vm.pauseQueue()
+                        }
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    LinearProgressIndicator(
+                        progress = { s.queueIndex.toFloat() / maxOf(1, n) },
+                        modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(50))
+                    )
+                }
                 s.queueActive -> {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon3D(R.drawable.ms_playlist_play, GBlue, 44.dp)
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
-                            Text(
-                                if (countdown > 0) "Parte ${s.queueIndex + 1} de $n en $countdown…"
-                                else "Publicando parte ${minOf(s.queueIndex + 1, n)} de $n",
-                                fontWeight = FontWeight.Bold, fontSize = 15.sp, color = cs.onSurface
-                            )
-                            Text("Publica y vuelve: la siguiente se abre sola", fontSize = 12.sp, color = cs.onSurfaceVariant)
-                            Spacer(Modifier.height(6.dp))
-                            LinearProgressIndicator(
-                                progress = { s.queueIndex.toFloat() / maxOf(1, n) },
-                                modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(50))
-                            )
+                            Text("Abriendo parte ${minOf(s.queueIndex + 1, n)} de $n…", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = cs.onSurface)
+                            Text("Publícala en Mi estado y vuelve a Estados HD", fontSize = 12.sp, color = cs.onSurfaceVariant)
                         }
-                        Spacer(Modifier.width(10.dp))
                         Box(Modifier.clickable { vm.pauseQueue() }) { Icon3D(R.drawable.ms_pause, GYellow, 40.dp) }
                     }
                 }
@@ -794,21 +819,39 @@ fun PublishSheet(
                         .padding(14.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon3D(R.drawable.ms_upload, GGreen, 38.dp)
+                        Icon3D(R.drawable.ms_verified, GGreen, 38.dp)
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
-                            Text("Subir directo a Mi estado", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = cs.onSurface)
-                            Text("Recomendado · sin pasar por ningún chat", fontSize = 12.sp, color = GGreen, fontWeight = FontWeight.SemiBold)
+                            Text("Orden garantizado", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = cs.onSurface)
+                            Text("Recomendado · directo a Mi estado", fontSize = 12.sp, color = GGreen, fontWeight = FontWeight.SemiBold)
                         }
                     }
                     Spacer(Modifier.height(8.dp))
-                    NumberedStep(1, "Toca el botón: WhatsApp abre Mi estado con las partes cargadas", GGreen)
-                    NumberedStep(2, "Si aparece el botón HD arriba, actívalo", GGreen)
-                    NumberedStep(3, "Toca enviar: se publican en orden, 1, 2, 3…", GGreen)
+                    NumberedStep(1, "La app abre Mi estado solo con la parte 1. Publícala.", GGreen)
+                    NumberedStep(2, "Espera a que termine de subir (sin relojito) y vuelve.", GGreen)
+                    NumberedStep(3, "Confirma y recién ahí se abre la parte 2. Y así hasta el final.", GGreen)
                     Spacer(Modifier.height(12.dp))
-                    Button3D("Subir todas a Mi estado", R.drawable.ms_upload, Modifier.fillMaxWidth(), face = WaGreen, onClick = onDirectStatus)
-                    Spacer(Modifier.height(10.dp))
-                    Tonal3D(queueLabel, R.drawable.ms_playlist_play, Modifier.fillMaxWidth(), onClick = onQueue)
+                    Button3D(
+                        if (s.queueIndex in 1 until n) "Continuar con la parte ${s.queueIndex + 1}" else "Publicar en orden garantizado",
+                        R.drawable.ms_playlist_play, Modifier.fillMaxWidth(), face = WaGreen, onClick = onQueue
+                    )
+                }
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(cs.surfaceContainerHigh)
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon3D(R.drawable.ms_upload, GYellow, 34.dp)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Todas de una vez (rápido)", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = cs.onSurface)
+                        Text("WhatsApp las sube al tiempo y pueden quedar en desorden", fontSize = 11.sp, color = cs.onSurfaceVariant)
+                    }
+                    TextButton(onClick = onDirectStatus) { Text("Subir") }
                 }
                 Spacer(Modifier.height(14.dp))
 
@@ -851,9 +894,9 @@ fun PublishSheet(
             } else {
                 Text(s.platform.note, fontSize = 13.sp, color = cs.onSurfaceVariant, lineHeight = 18.sp)
                 Spacer(Modifier.height(12.dp))
-                Button3D("Enviar todas en orden", R.drawable.ms_send, Modifier.fillMaxWidth(), face = s.platform.color, onClick = onAll)
+                Button3D("Publicar en orden garantizado", R.drawable.ms_playlist_play, Modifier.fillMaxWidth(), face = s.platform.color, onClick = onQueue)
                 Spacer(Modifier.height(10.dp))
-                Tonal3D(queueLabel, R.drawable.ms_playlist_play, Modifier.fillMaxWidth(), onClick = onQueue)
+                Tonal3D("Todas de una vez (puede desordenarse)", R.drawable.ms_send, Modifier.fillMaxWidth(), onClick = onAll)
             }
             Spacer(Modifier.height(10.dp))
             Tonal3D("Guardar todas en la galería", R.drawable.ms_download, Modifier.fillMaxWidth(), onClick = onSave)
