@@ -57,7 +57,7 @@ val PLATFORMS = listOf(
     Platform(
         "wahd", "WhatsApp HD", "WhatsApp HD", 30, listOf("com.whatsapp", "com.whatsapp.w4b"), Color(0xFF25D366),
         Quality.HD_STATUS, "RECOMENDADO", true,
-        "Partes de 30 s con el peso exacto para que WhatsApp no las aplaste. Para lo más nítido: envíalas a tu propio chat y desde allí Reenviar → Mi estado."
+        "Partes de 30 s con el peso exacto para que WhatsApp no las aplaste. Se suben directo a Mi estado desde la app, en orden."
     ),
     Platform(
         "wa60", "WhatsApp 60 s", "WhatsApp 60 s", 60, listOf("com.whatsapp", "com.whatsapp.w4b"), Color(0xFF00A884),
@@ -311,12 +311,14 @@ object Sharer {
         return clip
     }
 
-    private fun jidOf(phone: String?): String? {
+    const val STATUS_JID = "status@broadcast"
+
+    fun jidOf(phone: String?): String? {
         val d = phone?.filter { it.isDigit() } ?: return null
         return if (d.length >= 8) "$d@s.whatsapp.net" else null
     }
 
-    fun single(ctx: Context, file: File, pkg: String?, phone: String? = null): Intent {
+    fun single(ctx: Context, file: File, pkg: String?, jid: String? = null): Intent {
         val u = uri(ctx, file)
         val send = Intent(Intent.ACTION_SEND).apply {
             type = "video/mp4"
@@ -324,12 +326,12 @@ object Sharer {
             clipData = clipOf(ctx, listOf(u))
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             if (pkg != null) setPackage(pkg)
-            if (pkg != null) jidOf(phone)?.let { putExtra("jid", it) }
+            if (pkg != null) jid?.let { putExtra("jid", it) }
         }
         return if (pkg != null) send else Intent.createChooser(send, "Publicar parte")
     }
 
-    fun multiple(ctx: Context, files: List<File>, pkg: String?, phone: String? = null): Intent {
+    fun multiple(ctx: Context, files: List<File>, pkg: String?, jid: String? = null): Intent {
         val uris = ArrayList(files.map { uri(ctx, it) })
         val send = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
             type = "video/mp4"
@@ -337,7 +339,7 @@ object Sharer {
             clipData = clipOf(ctx, uris)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             if (pkg != null) setPackage(pkg)
-            if (pkg != null) jidOf(phone)?.let { putExtra("jid", it) }
+            if (pkg != null) jid?.let { putExtra("jid", it) }
         }
         return if (pkg != null) send else Intent.createChooser(send, "Publicar partes")
     }

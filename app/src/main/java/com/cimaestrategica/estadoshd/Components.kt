@@ -1,7 +1,7 @@
 package com.cimaestrategica.estadoshd
 
 import androidx.annotation.DrawableRes
-import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -31,6 +31,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
@@ -42,36 +51,65 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/** Ícono 3D: baldosa con degradado, brillo superior, sombra de color y glifo con relieve. */
+/** Ícono 3D estilo 2026 (soft glass): baldosa translúcida tintada, borde de vidrio, brillo difuso y glifo con degradado. */
 @Composable
-fun Icon3D(@DrawableRes res: Int, color: Color, size: Dp = 44.dp, modifier: Modifier = Modifier) {
-    val shape = RoundedCornerShape(size * 0.3f)
+fun Icon3D(@DrawableRes res: Int, color: Color, side: Dp = 44.dp, modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(side * 0.32f)
+    val surface = cs.surface
+    val dark = surface.luminance() < 0.5f
+    val glyphTop = lerp(color, Color.White, if (dark) 0.40f else 0.12f)
+    val glyphBottom = lerp(color, Color.Black, if (dark) 0.05f else 0.28f)
+    val glyph = Brush.linearGradient(listOf(glyphTop, glyphBottom))
     Box(
         modifier
-            .size(size)
-            .shadow(size * 0.18f, shape, ambientColor = color, spotColor = color)
+            .size(side)
+            .shadow(side * 0.16f, shape, ambientColor = color.copy(alpha = 0.45f), spotColor = color.copy(alpha = 0.55f))
             .clip(shape)
             .background(
-                Brush.verticalGradient(
-                    listOf(lerp(color, Color.White, 0.30f), color, lerp(color, Color.Black, 0.20f))
+                Brush.linearGradient(
+                    listOf(
+                        lerp(surface, color, if (dark) 0.20f else 0.08f),
+                        lerp(surface, color, if (dark) 0.34f else 0.22f)
+                    )
                 )
+            )
+            .drawBehind {
+                drawRect(
+                    Brush.radialGradient(
+                        listOf(Color.White.copy(alpha = if (dark) 0.16f else 0.70f), Color.Transparent),
+                        center = Offset(this.size.width * 0.28f, this.size.height * 0.05f),
+                        radius = this.size.width * 0.85f
+                    )
+                )
+            }
+            .border(
+                1.dp,
+                Brush.linearGradient(
+                    listOf(Color.White.copy(alpha = if (dark) 0.30f else 0.95f), color.copy(alpha = 0.22f))
+                ),
+                shape
             ),
         contentAlignment = Alignment.Center
     ) {
-        Box(
-            Modifier
-                .align(Alignment.TopCenter)
-                .fillMaxWidth()
-                .fillMaxHeight(0.5f)
-                .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.40f), Color.White.copy(alpha = 0.03f))))
-        )
         val p = painterResource(res)
-        Icon(p, null, tint = Color.Black.copy(alpha = 0.28f), modifier = Modifier.size(size * 0.56f).offset(y = size * 0.035f))
-        Icon(p, null, tint = Color.White, modifier = Modifier.size(size * 0.56f))
+        Icon(
+            p, null, tint = color.copy(alpha = 0.35f),
+            modifier = Modifier.size(side * 0.52f).offset(y = side * 0.05f).blur(side * 0.05f)
+        )
+        Icon(
+            p, null, tint = color,
+            modifier = Modifier
+                .size(side * 0.52f)
+                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                .drawWithContent {
+                    drawContent()
+                    drawRect(glyph, blendMode = BlendMode.SrcAtop)
+                }
+        )
     }
 }
 
-/** Botón 3D tipo tecla: se hunde al presionar. */
+/** Botón 3D suave: degradado, borde de vidrio, sombra difusa de color y leve hundimiento al tocar. */
 @Composable
 fun Button3D(
     text: String?,
@@ -85,37 +123,33 @@ fun Button3D(
 ) {
     val src = remember { MutableInteractionSource() }
     val pressed by src.collectIsPressedAsState()
-    val depth = 5.dp
-    val press by animateDpAsState(if (pressed && enabled) depth else 0.dp, label = "press")
+    val sc by animateFloatAsState(if (pressed && enabled) 0.97f else 1f, label = "sc")
     val c = if (enabled) face else cs.surfaceVariant
     val fg = if (enabled) content else cs.onSurfaceVariant.copy(alpha = 0.6f)
     val shape = RoundedCornerShape(18.dp)
-    Box(modifier.height(height + depth)) {
-        Box(
-            Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .height(height)
-                .shadow(if (pressed) 2.dp else 10.dp, shape, ambientColor = c, spotColor = c)
-                .clip(shape)
-                .background(lerp(c, Color.Black, 0.25f))
-        )
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(height)
-                .offset(y = press)
-                .clip(shape)
-                .background(Brush.verticalGradient(listOf(lerp(c, Color.White, 0.20f), c)))
-                .border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.5f), Color.Transparent)), shape)
-                .clickable(interactionSource = src, indication = null, enabled = enabled, onClick = onClick),
-            contentAlignment = Alignment.Center
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-                if (icon != null) Icon(painterResource(icon), null, tint = fg, modifier = Modifier.size(22.dp))
-                if (icon != null && text != null) Spacer(Modifier.width(9.dp))
-                if (text != null) Text(text, color = fg, fontWeight = FontWeight.Bold, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    Box(
+        modifier
+            .height(height)
+            .scale(sc)
+            .shadow(if (pressed || !enabled) 3.dp else 12.dp, shape, ambientColor = c.copy(alpha = 0.45f), spotColor = c.copy(alpha = 0.6f))
+            .clip(shape)
+            .background(Brush.verticalGradient(listOf(lerp(c, Color.White, 0.16f), c, lerp(c, Color.Black, 0.06f))))
+            .drawBehind {
+                drawRect(
+                    Brush.verticalGradient(
+                        listOf(Color.White.copy(alpha = 0.22f), Color.Transparent),
+                        endY = this.size.height * 0.55f
+                    )
+                )
             }
+            .border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.55f), Color.White.copy(alpha = 0.05f))), shape)
+            .clickable(interactionSource = src, indication = null, enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+            if (icon != null) Icon(painterResource(icon), null, tint = fg, modifier = Modifier.size(22.dp))
+            if (icon != null && text != null) Spacer(Modifier.width(9.dp))
+            if (text != null) Text(text, color = fg, fontWeight = FontWeight.Bold, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -272,7 +306,7 @@ fun NumberedStep(n: Int, text: String, color: Color) {
     Row(Modifier.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(
             Modifier.size(24.dp).shadow(3.dp, CircleShape, spotColor = color).clip(CircleShape)
-                .background(Brush.verticalGradient(listOf(lerp(color, Color.White, 0.25f), color))),
+                .background(Brush.linearGradient(listOf(lerp(color, Color.White, 0.18f), lerp(color, Color.Black, 0.12f)))),
             contentAlignment = Alignment.Center
         ) { Text("$n", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
         Spacer(Modifier.width(10.dp))

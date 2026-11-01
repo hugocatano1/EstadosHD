@@ -93,7 +93,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.IntentCompat
 import kotlinx.coroutines.delay
 
-const val APP_VERSION = "2.1"
+const val APP_VERSION = "2.2"
 const val AUTHOR = "Hugo Cataño"
 const val AUTHOR_WEB = "https://hugocatano.com"
 
@@ -155,7 +155,10 @@ fun AppScreen(vm: MainViewModel) {
         val f = s.segments.getOrNull(i)?.file ?: return@LaunchedEffect
         vm.markLaunched(i)
         try {
-            queueLauncher.launch(Sharer.single(context, f, Sharer.packageFor(context, s.platform)))
+            val qp = Sharer.packageFor(context, s.platform)
+            queueLauncher.launch(
+                Sharer.single(context, f, qp, if (s.platform.isWhatsApp && qp != null) Sharer.STATUS_JID else null)
+            )
         } catch (e: Exception) {
             vm.pauseQueue()
             vm.emit("No se pudo abrir la app de destino")
@@ -239,13 +242,14 @@ fun StatusCardArt(color: Color, rotation: Float, x: Dp, scale: Float, icon: Int?
             .scale(scale)
             .width(112.dp)
             .height(176.dp)
-            .shadow(18.dp, shape, ambientColor = color, spotColor = color)
+            .shadow(22.dp, shape, ambientColor = color.copy(alpha = 0.5f), spotColor = color.copy(alpha = 0.6f))
             .clip(shape)
-            .background(Brush.verticalGradient(listOf(lerp(color, Color.White, 0.28f), color, lerp(color, Color.Black, 0.22f))))
+            .background(Brush.linearGradient(listOf(lerp(color, Color.White, 0.22f), lerp(color, Color.Black, 0.18f))))
+            .border(1.dp, Brush.linearGradient(listOf(Color.White.copy(alpha = 0.7f), Color.White.copy(alpha = 0.05f))), shape)
     ) {
         Box(
-            Modifier.fillMaxWidth().height(80.dp)
-                .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.35f), Color.Transparent)))
+            Modifier.fillMaxWidth().height(110.dp)
+                .background(Brush.radialGradient(listOf(Color.White.copy(alpha = 0.30f), Color.Transparent)))
         )
         Row(Modifier.fillMaxWidth().padding(10.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             repeat(3) { i ->
@@ -417,13 +421,19 @@ fun EditorScreen(s: UiState, vm: MainViewModel, info: VideoInfo, onPick: () -> U
             onMyChat = {
                 val files = s.segments.mapNotNull { it.file }
                 if (pkg == null) vm.emit("No encontré WhatsApp instalado")
-                else if (Sharer.safeStart(context, Sharer.multiple(context, files, pkg, s.myNumber))) vm.markAllShared()
+                else if (Sharer.safeStart(context, Sharer.multiple(context, files, pkg, Sharer.jidOf(s.myNumber)))) vm.markAllShared()
                 showPublish = false
             },
             onAll = {
                 val files = s.segments.mapNotNull { it.file }
                 if (Sharer.safeStart(context, Sharer.multiple(context, files, pkg))) vm.markAllShared()
                 else vm.emit("No se encontró una app para publicar")
+                showPublish = false
+            },
+            onDirectStatus = {
+                val files = s.segments.mapNotNull { it.file }
+                if (pkg == null) vm.emit("No encontré WhatsApp instalado")
+                else if (Sharer.safeStart(context, Sharer.multiple(context, files, pkg, Sharer.STATUS_JID))) vm.markAllShared()
                 showPublish = false
             },
             onQueue = {
@@ -746,12 +756,15 @@ fun PublishSheet(
     onDismiss: () -> Unit,
     onMyChat: () -> Unit,
     onAll: () -> Unit,
+    onDirectStatus: () -> Unit,
     onQueue: () -> Unit,
     onSave: () -> Unit,
     onNumber: (String) -> Unit
 ) {
     val state = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val n = s.segments.size
+    var showForward by remember { mutableStateOf(false) }
+    val queueLabel = if (s.queueIndex in 1 until n) "Continuar (parte ${s.queueIndex + 1})" else "Una por una, en orden"
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = state, containerColor = cs.surface) {
         Column(
             Modifier
@@ -762,7 +775,7 @@ fun PublishSheet(
                 .padding(bottom = 28.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon3D(platformIcon(s.platform), s.platform.color, 48.dp)
+                Icon3D(platformIcon(s.platform), s.platform.color, 50.dp)
                 Spacer(Modifier.width(14.dp))
                 Column {
                     Text("Publicar en ${s.platform.short}", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = cs.onSurface)
@@ -775,21 +788,51 @@ fun PublishSheet(
                 Column(
                     Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(GGreen.copy(alpha = 0.08f))
-                        .border(1.dp, GGreen.copy(alpha = 0.35f), RoundedCornerShape(20.dp))
+                        .clip(RoundedCornerShape(22.dp))
+                        .background(lerp(cs.surface, GGreen, 0.07f))
+                        .border(1.dp, GGreen.copy(alpha = 0.30f), RoundedCornerShape(22.dp))
                         .padding(14.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon3D(R.drawable.ms_verified, GGreen, 32.dp)
-                        Spacer(Modifier.width(10.dp))
-                        Text("Máxima nitidez", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = cs.onSurface)
+                        Icon3D(R.drawable.ms_upload, GGreen, 38.dp)
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Subir directo a Mi estado", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = cs.onSurface)
+                            Text("Recomendado · sin pasar por ningún chat", fontSize = 12.sp, color = GGreen, fontWeight = FontWeight.SemiBold)
+                        }
                     }
                     Spacer(Modifier.height(8.dp))
-                    NumberedStep(1, "Envía las partes a tu propio chat", GGreen)
-                    NumberedStep(2, "Mantén presionado → Reenviar → Mi estado", GGreen)
-                    NumberedStep(3, "Si aparece el botón HD, actívalo", GGreen)
+                    NumberedStep(1, "Toca el botón: WhatsApp abre Mi estado con las partes cargadas", GGreen)
+                    NumberedStep(2, "Si aparece el botón HD arriba, actívalo", GGreen)
+                    NumberedStep(3, "Toca enviar: se publican en orden, 1, 2, 3…", GGreen)
+                    Spacer(Modifier.height(12.dp))
+                    Button3D("Subir todas a Mi estado", R.drawable.ms_upload, Modifier.fillMaxWidth(), face = WaGreen, onClick = onDirectStatus)
                     Spacer(Modifier.height(10.dp))
+                    Tonal3D(queueLabel, R.drawable.ms_playlist_play, Modifier.fillMaxWidth(), onClick = onQueue)
+                }
+                Spacer(Modifier.height(14.dp))
+
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .clickable { showForward = !showForward }
+                        .padding(vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon3D(R.drawable.ms_forward, GPurple, 34.dp)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Método alterno: reenviar", fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = cs.onSurface)
+                        Text("Si tu WhatsApp comprime más al subir directo", fontSize = 12.sp, color = cs.onSurfaceVariant)
+                    }
+                    Text(if (showForward) "Ocultar" else "Ver", color = cs.primary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                }
+                if (showForward) {
+                    Spacer(Modifier.height(8.dp))
+                    NumberedStep(1, "Envía las partes a tu propio chat", GPurple)
+                    NumberedStep(2, "Mantén presionado → Reenviar → Mi estado", GPurple)
+                    Spacer(Modifier.height(8.dp))
                     OutlinedTextField(
                         value = s.myNumber,
                         onValueChange = onNumber,
@@ -801,20 +844,17 @@ fun PublishSheet(
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(Modifier.height(10.dp))
-                    Button3D("Enviar a mi chat", R.drawable.ms_send, Modifier.fillMaxWidth(), face = WaGreen, enabled = s.myNumber.length >= 8, onClick = onMyChat)
+                    Button3D("Enviar a mi chat", R.drawable.ms_send, Modifier.fillMaxWidth(), face = GPurple, enabled = s.myNumber.length >= 8, onClick = onMyChat)
+                    Spacer(Modifier.height(6.dp))
+                    TextButton(onClick = onAll, modifier = Modifier.fillMaxWidth()) { Text("Elegir chat o destino manualmente") }
                 }
-                Spacer(Modifier.height(12.dp))
-                Button3D("Subir todas a Mi estado en orden", R.drawable.ms_upload, Modifier.fillMaxWidth(), onClick = onAll)
             } else {
                 Text(s.platform.note, fontSize = 13.sp, color = cs.onSurfaceVariant, lineHeight = 18.sp)
                 Spacer(Modifier.height(12.dp))
-                Button3D("Enviar todas en orden", R.drawable.ms_send, Modifier.fillMaxWidth(), onClick = onAll)
+                Button3D("Enviar todas en orden", R.drawable.ms_send, Modifier.fillMaxWidth(), face = s.platform.color, onClick = onAll)
+                Spacer(Modifier.height(10.dp))
+                Tonal3D(queueLabel, R.drawable.ms_playlist_play, Modifier.fillMaxWidth(), onClick = onQueue)
             }
-            Spacer(Modifier.height(10.dp))
-            Tonal3D(
-                if (s.queueIndex in 1 until n) "Continuar cola (parte ${s.queueIndex + 1})" else "Cola guiada: una por una",
-                R.drawable.ms_playlist_play, Modifier.fillMaxWidth(), onClick = onQueue
-            )
             Spacer(Modifier.height(10.dp))
             Tonal3D("Guardar todas en la galería", R.drawable.ms_download, Modifier.fillMaxWidth(), onClick = onSave)
         }
