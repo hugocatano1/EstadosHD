@@ -94,7 +94,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.IntentCompat
 import kotlinx.coroutines.delay
 
-const val APP_VERSION = "3.7"
+const val APP_VERSION = "4.0"
 const val AUTHOR = "Hugo Cataño"
 const val AUTHOR_WEB = "https://hugocatano.com"
 
@@ -233,8 +233,9 @@ fun AppScreen(vm: MainViewModel, dlVm: DownloadViewModel, navCmd: Pair<String, L
             else -> section = 0
         }
     }
+    Box(Modifier.fillMaxSize().background(cs.background)) { VibrantBackdrop() }
     Scaffold(
-        containerColor = cs.background,
+        containerColor = Color.Transparent,
         snackbarHost = {
             SnackbarHost(snackbar, Modifier.navigationBarsPadding().padding(bottom = 112.dp)) { data ->
                 androidx.compose.material3.Snackbar(
@@ -279,7 +280,6 @@ fun HomeScreen(loading: Boolean, onPick: () -> Unit, onAbout: () -> Unit) {
     androidx.compose.foundation.layout.BoxWithConstraints(
         Modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(cs.primaryContainer.copy(alpha = 0.55f), cs.background, cs.background)))
             .statusBarsPadding()
     ) {
     val minH = maxHeight
@@ -298,21 +298,22 @@ fun HomeScreen(loading: Boolean, onPick: () -> Unit, onAbout: () -> Unit) {
         HeroArt(loading)
         Spacer(Modifier.height(28.dp))
         Text(
-            if (loading) "Analizando tu video…" else "Tus estados en HD,\nnítidos y en orden",
-            fontSize = 30.sp, fontWeight = FontWeight.Bold, color = cs.onBackground,
+            if (loading) "Analizando tu video…" else "Tus estados en HD,",
+            fontSize = 30.sp, fontWeight = FontWeight.ExtraBold, color = cs.onBackground,
             textAlign = TextAlign.Center, lineHeight = 36.sp
         )
+        if (!loading) GradientText("nítidos y en orden", 30.sp)
         Spacer(Modifier.height(10.dp))
         Text(
             "Corta tu video al cuadro exacto para cada red social y optimízalo para que nunca se vea borroso.",
             fontSize = 15.sp, color = cs.onSurfaceVariant, textAlign = TextAlign.Center, lineHeight = 21.sp
         )
         Spacer(Modifier.height(26.dp))
-        Button3D("Elegir video", R.drawable.ms_video_library, Modifier.fillMaxWidth(), enabled = !loading, onClick = onPick)
+        Button3D("Elegir video", R.drawable.ms_video_library, Modifier.fillMaxWidth(), enabled = !loading, height = 60.dp, onClick = onPick)
         Spacer(Modifier.height(22.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             FeatureTile(R.drawable.ms_hd, GBlue, "HD Status", "Anti-borroso", Modifier.weight(1f))
-            FeatureTile(R.drawable.ms_content_cut, GRed, "Corte exacto", "Al cuadro", Modifier.weight(1f))
+            FeatureTile(R.drawable.ms_content_cut, Pnk, "Corte exacto", "Al cuadro", Modifier.weight(1f))
             FeatureTile(R.drawable.ms_playlist_play, GGreen, "En orden", "Parte por parte", Modifier.weight(1f))
         }
         Spacer(Modifier.height(12.dp))
@@ -327,10 +328,10 @@ fun HeroArt(loading: Boolean) {
     val t = rememberInfiniteTransition(label = "hero")
     val f by t.animateFloat(0f, 1f, infiniteRepeatable(tween(2200), RepeatMode.Reverse), label = "f")
     Box(Modifier.width(260.dp).height(200.dp), contentAlignment = Alignment.Center) {
-        StatusCardArt(GGreen, -16f + 3f * f, (-66).dp, 0.86f, null)
-        StatusCardArt(GRed, 16f - 3f * f, 66.dp, 0.86f, null)
+        StatusCardArt(GTeal, -16f + 3f * f, (-66).dp, 0.86f, null)
+        StatusCardArt(Org, 16f - 3f * f, 66.dp, 0.86f, null)
         Box(Modifier.scale(0.98f + 0.04f * f)) {
-            StatusCardArt(GBlue, 0f, 0.dp, 1f, if (loading) null else R.drawable.ms_play_arrow, loading)
+            StatusCardArt(Vio, 0f, 0.dp, 1f, if (loading) null else R.drawable.ms_play_arrow, loading)
         }
     }
 }
@@ -347,7 +348,7 @@ fun StatusCardArt(color: Color, rotation: Float, x: Dp, scale: Float, icon: Int?
             .height(176.dp)
             .shadow(22.dp, shape, ambientColor = color.copy(alpha = 0.5f), spotColor = color.copy(alpha = 0.6f))
             .clip(shape)
-            .background(Brush.linearGradient(listOf(lerp(color, Color.White, 0.22f), lerp(color, Color.Black, 0.18f))))
+            .background(Brush.linearGradient(listOf(hueShift(color, -18f, 0.9f, 1.15f), color, hueShift(color, 28f, 1.05f, 0.9f))))
             .border(1.dp, Brush.linearGradient(listOf(Color.White.copy(alpha = 0.7f), Color.White.copy(alpha = 0.05f))), shape)
     ) {
         Box(
@@ -377,9 +378,9 @@ fun StatusCardArt(color: Color, rotation: Float, x: Dp, scale: Float, icon: Int?
 fun FeatureTile(icon: Int, color: Color, title: String, sub: String, modifier: Modifier = Modifier) {
     Column(
         modifier
-            .shadow(2.dp, RoundedCornerShape(20.dp))
-            .clip(RoundedCornerShape(20.dp))
-            .background(cs.surface)
+            .shadow(8.dp, RoundedCornerShape(22.dp), ambientColor = color.copy(alpha = 0.35f), spotColor = color.copy(alpha = 0.45f))
+            .clip(RoundedCornerShape(22.dp))
+            .background(cs.surface.copy(alpha = 0.86f))
             .padding(vertical = 14.dp, horizontal = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -393,10 +394,10 @@ fun FeatureTile(icon: Int, color: Color, title: String, sub: String, modifier: M
 @Composable
 fun TopBar(onAbout: () -> Unit, trailing: (@Composable () -> Unit)?) {
     Row(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon3D(R.drawable.ms_play_arrow, GBlue, 40.dp)
+        Icon3D(R.drawable.ms_play_arrow, Vio, 42.dp)
         Spacer(Modifier.width(11.dp))
         Column(Modifier.weight(1f)) {
-            Text("Estados HD", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = cs.onBackground)
+            GradientText("Estados HD", 22.sp)
             Text("by $AUTHOR", fontSize = 12.sp, color = cs.onSurfaceVariant)
         }
         if (trailing != null) trailing()
@@ -412,7 +413,7 @@ fun Credits() {
     Column(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Text("DESARROLLADA POR", fontSize = 10.sp, letterSpacing = 2.sp, fontWeight = FontWeight.Bold, color = cs.onSurfaceVariant)
         Spacer(Modifier.height(2.dp))
-        Text(AUTHOR, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = cs.primary)
+        GradientText(AUTHOR, 18.sp)
         Spacer(Modifier.height(8.dp))
         Row(
             Modifier

@@ -2,6 +2,8 @@ package com.cimaestrategica.estadoshd
 
 import androidx.annotation.DrawableRes
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -51,71 +53,42 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/** Ícono 3D estilo 2026 (soft glass): baldosa translúcida tintada, borde de vidrio, brillo difuso y glifo con degradado. */
+/** Ícono 3D vibrante (clay): degradado de dos tonos, brillo superior, relieve inferior, halo de color y glifo con sombra. */
 @Composable
 fun Icon3D(@DrawableRes res: Int, color: Color, side: Dp = 44.dp, modifier: Modifier = Modifier) {
-    val shape = RoundedCornerShape(side * 0.32f)
-    val surface = cs.surface
-    val dark = surface.luminance() < 0.5f
-    val glyphTop = lerp(color, Color.White, if (dark) 0.40f else 0.12f)
-    val glyphBottom = lerp(color, Color.Black, if (dark) 0.05f else 0.28f)
-    val glyph = Brush.linearGradient(listOf(glyphTop, glyphBottom))
+    val shape = RoundedCornerShape(side * 0.30f)
+    val c1 = hueShift(color, -16f, 0.85f, 1.18f)
+    val c2 = hueShift(color, 24f, 1.05f, 0.92f)
     Box(
         modifier
             .size(side)
-            .shadow(side * 0.16f, shape, ambientColor = color.copy(alpha = 0.45f), spotColor = color.copy(alpha = 0.55f))
+            .shadow(side * 0.24f, shape, ambientColor = c2.copy(alpha = 0.55f), spotColor = c2.copy(alpha = 0.8f))
             .clip(shape)
-            .background(
-                Brush.linearGradient(
-                    listOf(
-                        lerp(surface, color, if (dark) 0.20f else 0.08f),
-                        lerp(surface, color, if (dark) 0.34f else 0.22f)
-                    )
-                )
-            )
+            .background(Brush.linearGradient(listOf(c1, color, c2)))
             .drawBehind {
-                drawRect(
-                    Brush.radialGradient(
-                        listOf(Color.White.copy(alpha = if (dark) 0.16f else 0.70f), Color.Transparent),
-                        center = Offset(this.size.width * 0.28f, this.size.height * 0.05f),
-                        radius = this.size.width * 0.85f
-                    )
+                drawOval(
+                    Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.55f), Color.White.copy(alpha = 0f)), startY = 0f, endY = this.size.height * 0.55f),
+                    topLeft = Offset(this.size.width * 0.08f, this.size.height * 0.03f),
+                    size = androidx.compose.ui.geometry.Size(this.size.width * 0.84f, this.size.height * 0.5f)
                 )
+                drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.16f)), startY = this.size.height * 0.6f, endY = this.size.height))
             }
-            .border(
-                1.dp,
-                Brush.linearGradient(
-                    listOf(Color.White.copy(alpha = if (dark) 0.30f else 0.95f), color.copy(alpha = 0.22f))
-                ),
-                shape
-            ),
+            .border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.75f), Color.White.copy(alpha = 0.05f))), shape),
         contentAlignment = Alignment.Center
     ) {
         val p = painterResource(res)
-        Icon(
-            p, null, tint = color.copy(alpha = 0.35f),
-            modifier = Modifier.size(side * 0.52f).offset(y = side * 0.05f).blur(side * 0.05f)
-        )
-        Icon(
-            p, null, tint = color,
-            modifier = Modifier
-                .size(side * 0.52f)
-                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-                .drawWithContent {
-                    drawContent()
-                    drawRect(glyph, blendMode = BlendMode.SrcAtop)
-                }
-        )
+        Icon(p, null, tint = Color.Black.copy(alpha = 0.28f), modifier = Modifier.size(side * 0.54f).offset(y = side * 0.045f).blur(side * 0.04f))
+        Icon(p, null, tint = Color.White, modifier = Modifier.size(side * 0.54f))
     }
 }
 
-/** Botón 3D suave: degradado, borde de vidrio, sombra difusa de color y leve hundimiento al tocar. */
+/** Botón 3D vibrante: degradado brillante, reflejo, halo de color y leve hundimiento al tocar. */
 @Composable
 fun Button3D(
     text: String?,
     @DrawableRes icon: Int?,
     modifier: Modifier = Modifier,
-    face: Color = GBlue,
+    face: Color = Vio,
     content: Color = Color.White,
     enabled: Boolean = true,
     height: Dp = 56.dp,
@@ -123,26 +96,29 @@ fun Button3D(
 ) {
     val src = remember { MutableInteractionSource() }
     val pressed by src.collectIsPressedAsState()
-    val sc by animateFloatAsState(if (pressed && enabled) 0.97f else 1f, label = "sc")
+    val sc by animateFloatAsState(if (pressed && enabled) 0.96f else 1f, label = "sc")
     val c = if (enabled) face else cs.surfaceVariant
     val fg = if (enabled) content else cs.onSurfaceVariant.copy(alpha = 0.6f)
-    val shape = RoundedCornerShape(18.dp)
+    val shape = RoundedCornerShape(20.dp)
+    val brush = when {
+        !enabled -> Brush.linearGradient(listOf(c, c))
+        face == Vio -> BrandBrushH
+        else -> Brush.horizontalGradient(listOf(hueShift(c, -12f, 0.95f, 1.08f), c, hueShift(c, 20f, 1.05f, 0.95f)))
+    }
+    val glow = if (face == Vio) Pnk else hueShift(c, 20f)
     Box(
         modifier
             .height(height)
             .scale(sc)
-            .shadow(if (pressed || !enabled) 3.dp else 12.dp, shape, ambientColor = c.copy(alpha = 0.45f), spotColor = c.copy(alpha = 0.6f))
+            .shadow(if (pressed || !enabled) 3.dp else 14.dp, shape, ambientColor = glow.copy(alpha = 0.5f), spotColor = glow.copy(alpha = 0.7f))
             .clip(shape)
-            .background(Brush.verticalGradient(listOf(lerp(c, Color.White, 0.16f), c, lerp(c, Color.Black, 0.06f))))
+            .background(brush)
             .drawBehind {
                 drawRect(
-                    Brush.verticalGradient(
-                        listOf(Color.White.copy(alpha = 0.22f), Color.Transparent),
-                        endY = this.size.height * 0.55f
-                    )
+                    Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.28f), Color.Transparent), endY = this.size.height * 0.55f)
                 )
             }
-            .border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.55f), Color.White.copy(alpha = 0.05f))), shape)
+            .border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.6f), Color.White.copy(alpha = 0.05f))), shape)
             .clickable(interactionSource = src, indication = null, enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
@@ -151,6 +127,30 @@ fun Button3D(
             if (icon != null && text != null) Spacer(Modifier.width(9.dp))
             if (text != null) Text(text, color = fg, fontWeight = FontWeight.Bold, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
+    }
+}
+
+/** Texto con degradado de marca. */
+@Composable
+fun GradientText(text: String, size: androidx.compose.ui.unit.TextUnit, weight: FontWeight = FontWeight.ExtraBold, modifier: Modifier = Modifier, brush: Brush = BrandBrushH) {
+    Text(text, modifier = modifier, style = androidx.compose.ui.text.TextStyle(brush = brush, fontSize = size, fontWeight = weight, fontFamily = Poppins))
+}
+
+/** Fondo vivo: manchas de color que se mueven lentamente. */
+@Composable
+fun VibrantBackdrop() {
+    val t = androidx.compose.animation.core.rememberInfiniteTransition(label = "bg")
+    val a by t.animateFloat(0f, 1f, androidx.compose.animation.core.infiniteRepeatable(androidx.compose.animation.core.tween(14000), androidx.compose.animation.core.RepeatMode.Reverse), label = "a")
+    val dark = cs.background.luminance() < 0.5f
+    val k = if (dark) 0.30f else 0.26f
+    androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+        val w = this.size.width; val h = this.size.height
+        fun blob(cx: Float, cy: Float, r: Float, col: Color) =
+            drawCircle(Brush.radialGradient(listOf(col.copy(alpha = k), col.copy(alpha = 0f)), center = Offset(cx, cy), radius = r), radius = r, center = Offset(cx, cy))
+        blob(w * (0.05f + 0.25f * a), h * 0.08f, w * 0.9f, Vio)
+        blob(w * (0.95f - 0.25f * a), h * (0.30f + 0.12f * a), w * 0.75f, Pnk)
+        blob(w * (0.20f + 0.30f * a), h * 0.80f, w * 0.85f, GTeal)
+        blob(w * (0.85f - 0.2f * a), h * 0.98f, w * 0.6f, Org)
     }
 }
 
@@ -165,9 +165,10 @@ fun AppCard(modifier: Modifier = Modifier, padding: Dp = 16.dp, content: @Compos
     Column(
         modifier
             .fillMaxWidth()
-            .shadow(2.dp, shape, ambientColor = Color.Black.copy(alpha = 0.08f), spotColor = Color.Black.copy(alpha = 0.10f))
+            .shadow(6.dp, shape, ambientColor = Vio.copy(alpha = 0.18f), spotColor = Vio.copy(alpha = 0.22f))
             .clip(shape)
-            .background(cs.surface)
+            .background(cs.surface.copy(alpha = 0.86f))
+            .border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = if (cs.background.luminance() < 0.5f) 0.12f else 0.9f), Color.White.copy(alpha = 0.05f))), shape)
             .padding(padding)
     ) { content() }
 }
@@ -178,7 +179,7 @@ fun PillTabs(tabs: List<Pair<String, Int>>, selected: Int, onSelect: (Int) -> Un
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(50))
-            .background(cs.surfaceContainerHigh)
+            .background(cs.surfaceContainerHigh.copy(alpha = 0.85f))
             .padding(4.dp)
     ) {
         tabs.forEachIndexed { i, (label, icon) ->
@@ -187,18 +188,18 @@ fun PillTabs(tabs: List<Pair<String, Int>>, selected: Int, onSelect: (Int) -> Un
                 Modifier
                     .weight(1f)
                     .height(42.dp)
-                    .then(if (sel) Modifier.shadow(3.dp, RoundedCornerShape(50)) else Modifier)
+                    .then(if (sel) Modifier.shadow(8.dp, RoundedCornerShape(50), ambientColor = Pnk, spotColor = Pnk) else Modifier)
                     .clip(RoundedCornerShape(50))
-                    .background(if (sel) cs.surface else Color.Transparent)
+                    .background(if (sel) BrandBrushH else Brush.linearGradient(listOf(Color.Transparent, Color.Transparent)))
                     .clickable { onSelect(i) },
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(painterResource(icon), null, tint = if (sel) cs.primary else cs.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                Icon(painterResource(icon), null, tint = if (sel) Color.White else cs.onSurfaceVariant, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(4.dp))
                 Text(
                     label, fontSize = 12.sp, maxLines = 1,
-                    color = if (sel) cs.primary else cs.onSurfaceVariant,
+                    color = if (sel) Color.White else cs.onSurfaceVariant,
                     fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium
                 )
             }
@@ -219,7 +220,7 @@ fun SegChoice(options: List<Pair<String, String>>, selected: Int, enabled: Boole
             Column(
                 Modifier
                     .weight(1f)
-                    .background(if (sel) cs.primaryContainer else Color.Transparent)
+                    .background(if (sel) Brush.linearGradient(listOf(Vio.copy(alpha = 0.18f), Pnk.copy(alpha = 0.18f))) else Brush.linearGradient(listOf(Color.Transparent, Color.Transparent)))
                     .clickable(enabled = enabled) { onSelect(i) }
                     .padding(vertical = 10.dp, horizontal = 4.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
@@ -276,7 +277,7 @@ fun StatTile(@DrawableRes icon: Int, color: Color, value: String, label: String,
         modifier
             .shadow(1.dp, RoundedCornerShape(18.dp))
             .clip(RoundedCornerShape(18.dp))
-            .background(cs.surface)
+            .background(cs.surface.copy(alpha = 0.86f))
             .padding(horizontal = 10.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

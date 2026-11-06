@@ -52,6 +52,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -76,7 +77,6 @@ fun DownloaderScreen(d: DlState, vm: DownloadViewModel, onAbout: () -> Unit, onC
     Column(
         Modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(lerp(cs.background, Color(0xFFE1306C), 0.10f), cs.background, cs.background)))
             .statusBarsPadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 18.dp)
@@ -154,7 +154,7 @@ fun HeroDownloader() {
     Column(
         Modifier
             .fillMaxWidth()
-            .shadow(16.dp, shape, ambientColor = Color(0xFFE1306C), spotColor = Color(0xFFE1306C))
+            .shadow(18.dp, shape, ambientColor = Pnk, spotColor = Pnk)
             .clip(shape)
             .background(
                 Brush.linearGradient(
@@ -322,151 +322,49 @@ fun HistoryRow(item: DlItem, ctx: Context, onCut: (java.io.File) -> Unit, onRemo
     }
 }
 
-/** Barra de navegación inferior con íconos 3D. */
+/** Barra de navegación inferior flotante con píldora degradada. */
 @Composable
 fun BottomNav(section: Int, onSelect: (Int) -> Unit) {
-    val shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp)
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .shadow(16.dp, shape)
-            .clip(shape)
-            .background(cs.surface)
-            .navigationBarsPadding()
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        listOf(
-            Triple("Estados", R.drawable.ms_hd, GBlue),
-            Triple("Descargar", R.drawable.ms_cloud_download, Color(0xFFD62976)),
-            Triple("Historial", R.drawable.ms_folder, GYellow)
-        ).forEachIndexed { i, (label, ic, col) ->
-            val sel = i == section
-            Row(
-                Modifier
-                    .weight(1f)
-                    .height(56.dp)
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(if (sel) lerp(cs.surface, col, 0.12f) else Color.Transparent)
-                    .clickable { onSelect(i) },
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (sel) Icon3D(ic, col, 32.dp) else Icon(painterResource(ic), null, tint = cs.onSurfaceVariant, modifier = Modifier.size(22.dp))
-                Spacer(Modifier.width(6.dp))
-                Text(label, fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium, fontSize = 13.sp, color = if (sel) cs.onSurface else cs.onSurfaceVariant, maxLines = 1)
-            }
-        }
-    }
-}
-
-
-
-@Composable
-fun ErrorCard(d: DlState, vm: DownloadViewModel) {
-    var showDetail by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(22.dp)
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(lerp(cs.surface, GRed, 0.08f))
-            .border(1.dp, GRed.copy(alpha = 0.35f), shape)
-            .padding(14.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon3D(R.drawable.ms_error, GRed, 38.dp)
-            Spacer(Modifier.width(12.dp))
-            Text(d.errorTitle ?: "", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = cs.onSurface, lineHeight = 19.sp, modifier = Modifier.weight(1f))
-            IconButton(onClick = { vm.clearError() }) { Icon(painterResource(R.drawable.ms_close), "Cerrar", tint = cs.onSurfaceVariant) }
-        }
-        val accKey: String? = null
-        if (accKey != null) {
-            val acc = Accounts.ALL.first { it.key == accKey }
-            Spacer(Modifier.height(10.dp))
-            Button3D("Conectar ${acc.name}", acc.icon, Modifier.fillMaxWidth(), face = Color(acc.color), height = 52.dp) { vm.startLogin(acc.key) }
-        }
-        if (!d.errorDetail.isNullOrBlank()) {
-            TextButton(onClick = { showDetail = !showDetail }) { Text(if (showDetail) "Ocultar detalle técnico" else "Ver detalle técnico") }
-            if (showDetail) {
-                Text(
-                    d.errorDetail ?: "", fontSize = 10.5.sp, color = cs.onSurfaceVariant, lineHeight = 14.sp,
-                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(cs.surfaceContainerHigh).padding(10.dp)
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun AccountsCard(d: DlState, vm: DownloadViewModel) {
-    AppCard(padding = 12.dp) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon3D(R.drawable.ms_verified, GBlue, 32.dp)
-            Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f)) {
-                Text("Cuentas conectadas", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = cs.onSurface)
-                Text("Instagram y otras redes exigen sesión. Se guarda solo en tu celular.", fontSize = 11.sp, color = cs.onSurfaceVariant, lineHeight = 14.sp)
-            }
-        }
-        Spacer(Modifier.height(10.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Accounts.ALL.forEach { acc ->
-                val on = acc.key in d.connected
-                val col = Color(acc.color)
-                Column(
+    val shape = RoundedCornerShape(30.dp)
+    Box(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 14.dp, vertical = 8.dp)) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .shadow(18.dp, shape, ambientColor = Vio.copy(alpha = 0.35f), spotColor = Vio.copy(alpha = 0.45f))
+                .clip(shape)
+                .background(cs.surface.copy(alpha = 0.92f))
+                .border(1.dp, Color.White.copy(alpha = if (cs.background.luminance() < 0.5f) 0.10f else 0.9f), shape)
+                .padding(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            listOf(
+                Triple("Estados", R.drawable.ms_hd, GBlue),
+                Triple("Descargar", R.drawable.ms_cloud_download, Pnk),
+                Triple("Historial", R.drawable.ms_folder, GYellow)
+            ).forEachIndexed { i, (label, ic, col) ->
+                val sel = i == section
+                Row(
                     Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(if (on) lerp(cs.surface, GGreen, 0.10f) else cs.surfaceContainerHigh)
-                        .border(if (on) 1.5.dp else 0.dp, if (on) GGreen else Color.Transparent, RoundedCornerShape(16.dp))
-                        .clickable { if (on) vm.disconnect(acc.key) else vm.startLogin(acc.key) }
-                        .padding(vertical = 8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                        .weight(if (sel) 1.35f else 1f)
+                        .height(52.dp)
+                        .then(if (sel) Modifier.shadow(10.dp, RoundedCornerShape(24.dp), ambientColor = Pnk, spotColor = Pnk) else Modifier)
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(if (sel) BrandBrushH else Brush.linearGradient(listOf(Color.Transparent, Color.Transparent)))
+                        .clickable { onSelect(i) },
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon3D(acc.icon, col, 30.dp)
-                    Spacer(Modifier.height(4.dp))
-                    Text(acc.name, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = cs.onSurface, maxLines = 1)
-                    Text(if (on) "Conectada" else "Conectar", fontSize = 9.5.sp, color = if (on) GGreen else cs.primary, fontWeight = FontWeight.SemiBold)
+                    if (sel) Icon(painterResource(ic), null, tint = Color.White, modifier = Modifier.size(22.dp))
+                    else Icon3D(ic, col, 30.dp)
+                    if (sel) {
+                        Spacer(Modifier.width(6.dp))
+                        Text(label, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.White, maxLines = 1)
+                    }
                 }
             }
         }
     }
 }
-
-/** Pantalla de inicio de sesión dentro de la app (WebView). */
-@android.annotation.SuppressLint("SetJavaScriptEnabled")
-@Composable
-fun LoginOverlay(accKey: String, onDone: (Boolean) -> Unit) {
-    val acc = Accounts.ALL.first { it.key == accKey }
-    androidx.activity.compose.BackHandler { onDone(false) }
-    Column(Modifier.fillMaxSize().background(cs.surface).statusBarsPadding().navigationBarsPadding()) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { onDone(false) }) { Icon(painterResource(R.drawable.ms_close), "Cerrar") }
-            Icon3D(acc.icon, Color(acc.color), 32.dp)
-            Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f)) {
-                Text("Conectar ${acc.name}", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = cs.onSurface)
-                Text("Inicia sesión y luego toca «Listo»", fontSize = 11.sp, color = cs.onSurfaceVariant)
-            }
-            Button3D("Listo", R.drawable.ms_check_circle, Modifier.width(120.dp), face = GGreen, height = 44.dp) { onDone(true) }
-        }
-        androidx.compose.ui.viewinterop.AndroidView(
-            factory = { c ->
-                android.webkit.CookieManager.getInstance().setAcceptCookie(true)
-                android.webkit.WebView(c).apply {
-                    settings.javaScriptEnabled = true
-                    settings.domStorageEnabled = true
-                    android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
-                    webViewClient = android.webkit.WebViewClient()
-                    loadUrl(acc.loginUrl)
-                }
-            },
-            modifier = Modifier.fillMaxSize()
-        )
-    }
-}
-
 
 /** Línea de producción: al terminar la descarga, crea las partes HD y abre la publicación. */
 @Composable
