@@ -246,7 +246,7 @@ class DownloadViewModel(app: Application) : AndroidViewModel(app) {
             it.copy(
                 errorTitle = friendly(raw),
                 errorDetail = raw.lines().filter { l -> l.isNotBlank() }.let { ls ->
-                    (ls.filter { l -> l.startsWith("página") || l.startsWith("graphql") || l.startsWith("embed") || l.startsWith("Instagram") } + ls.takeLast(3)).distinct()
+                    (ls.filter { l -> l.startsWith("página") || l.startsWith("graphql") || l.startsWith("embed") || l.startsWith("Instagram") || l.startsWith("media") || l.startsWith("oembed") || l.startsWith("linkedin") || l.startsWith("LinkedIn") } + ls.takeLast(3)).distinct()
                 }.joinToString("\n").take(1200),
                 errorAccount = null
             )

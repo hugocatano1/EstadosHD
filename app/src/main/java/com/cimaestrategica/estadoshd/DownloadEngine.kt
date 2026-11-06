@@ -107,6 +107,13 @@ object DownloadEngine {
                     hasAudio = p.audioUrl != null, imageCount = p.items.count { !it.isVideo })
             } catch (e: Exception) { igError = e.message }
         }
+        if (LiExtractor.isLinkedIn(url)) {
+            try {
+                val p = runInterruptible { LiExtractor.fetch(url) }
+                return@withContext LinkInfo(url, p.title, p.user, p.durationSec, p.cover, p.hasVideo, "LinkedIn",
+                    hasAudio = false, imageCount = p.items.count { !it.isVideo })
+            } catch (e: Exception) { igError = e.message }
+        }
         try { analyzeYtdlp(ctx, url) } catch (e: Exception) {
             throw Exception(listOfNotNull(igError, e.message).joinToString("\n"))
         }
@@ -160,7 +167,11 @@ object DownloadEngine {
         onProgress: (Float, String) -> Unit
     ): List<File> = withContext(Dispatchers.IO) {
         dir.mkdirs()
-        val ig = if (IgExtractor.isInstagram(url)) (IgExtractor.cached(url) ?: runCatching { runInterruptible { IgExtractor.fetch(url) } }.getOrNull()) else null
+        val ig = when {
+            IgExtractor.isInstagram(url) -> IgExtractor.cached(url) ?: runCatching { runInterruptible { IgExtractor.fetch(url) } }.getOrNull()
+            LiExtractor.isLinkedIn(url) -> LiExtractor.cached(url) ?: runCatching { runInterruptible { LiExtractor.fetch(url) } }.getOrNull()
+            else -> null
+        }
         if (ig != null) return@withContext downloadIg(ctx, ig, format, dir, onProgress)
         ensureInit(ctx)
         val before = dir.listFiles()?.map { it.absolutePath }?.toSet() ?: emptySet()
@@ -208,14 +219,14 @@ object DownloadEngine {
     }
 
     private suspend fun downloadIg(ctx: Context, p: IgExtractor.Post, format: DlFormat, dir: File, onProgress: (Float, String) -> Unit): List<File> {
-        val base = (p.user.ifBlank { "instagram" } + "_" + System.currentTimeMillis()).replace(Regex("[^A-Za-z0-9_.-]"), "_")
+        val base = (p.user.ifBlank { if (p.referer.contains("linkedin")) "linkedin" else "instagram" } + "_" + System.currentTimeMillis()).replace(Regex("[^A-Za-z0-9_.-]"), "_")
         val videos = p.items.filter { it.isVideo }
         val images = p.items.filter { !it.isVideo }.ifEmpty { p.items.mapNotNull { m -> m.thumb?.let { IgExtractor.Media(false, it, it) } } }
         suspend fun get(list: List<IgExtractor.Media>, ext: String, tag: String): List<File> {
             val out = mutableListOf<File>()
             list.forEachIndexed { i, m ->
                 val f = File(dir, "${base}_${i + 1}.$ext")
-                runInterruptible { IgExtractor.download(m.url, f) { fr -> onProgress(((i + fr) / list.size) * 100f, "$tag ${i + 1} de ${list.size}") } }
+                runInterruptible { IgExtractor.download(m.url, f, p.referer) { fr -> onProgress(((i + fr) / list.size) * 100f, "$tag ${i + 1} de ${list.size}") } }
                 out += f
             }
             return out
@@ -226,7 +237,7 @@ object DownloadEngine {
             DlFormat.IMAGE -> get(images.ifEmpty { videos.mapNotNull { m -> m.thumb?.let { IgExtractor.Media(false, it, it) } } }, "jpg", "Imagen")
             DlFormat.AUDIO_MP3 -> {
                 if (p.audioUrl != null) {
-                    val f = File(dir, "$base.m4a"); runInterruptible { IgExtractor.download(p.audioUrl, f) { fr -> onProgress(fr * 100f, "Audio") } }; listOf(f)
+                    val f = File(dir, "$base.m4a"); runInterruptible { IgExtractor.download(p.audioUrl, f, p.referer) { fr -> onProgress(fr * 100f, "Audio") } }; listOf(f)
                 } else if (videos.isNotEmpty()) {
                     val v = get(videos.take(1), "mp4", "Video").first()
                     onProgress(0f, "Extrayendo audio…")
@@ -240,7 +251,7 @@ object DownloadEngine {
                 else {
                     val imgs = get(images, "jpg", "Imagen")
                     if (p.audioUrl != null) {
-                        val f = File(dir, "$base.m4a"); runInterruptible { IgExtractor.download(p.audioUrl, f) { fr -> onProgress(fr * 100f, "Música") } }
+                        val f = File(dir, "$base.m4a"); runInterruptible { IgExtractor.download(p.audioUrl, f, p.referer) { fr -> onProgress(fr * 100f, "Música") } }
                         imgs + f
                     } else imgs
                 }

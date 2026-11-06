@@ -178,7 +178,7 @@ fun HeroDownloader() {
             ).forEach { (ic, col) -> Icon3D(ic, col, 42.dp) }
         }
         Spacer(Modifier.height(10.dp))
-        Text("Instagram · TikTok · Facebook · YouTube · X · Threads · Pinterest · +1.000 sitios", color = Color.White.copy(alpha = 0.92f), fontSize = 11.sp)
+        Text("Instagram · TikTok · Facebook · YouTube · LinkedIn · X · Threads · Pinterest · +1.000 sitios", color = Color.White.copy(alpha = 0.92f), fontSize = 11.sp)
     }
 }
 

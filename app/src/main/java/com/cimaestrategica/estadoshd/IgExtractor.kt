@@ -14,7 +14,8 @@ import java.net.URLEncoder
  */
 object IgExtractor {
     data class Media(val isVideo: Boolean, val url: String, val thumb: String?)
-    data class Post(val title: String, val user: String, val durationSec: Int, val items: List<Media>, val audioUrl: String?) {
+    data class Post(val title: String, val user: String, val durationSec: Int, val items: List<Media>, val audioUrl: String?,
+                    val referer: String = "https://www.instagram.com/") {
         val hasVideo get() = items.any { it.isVideo }
         val cover get() = items.firstOrNull()?.thumb ?: items.firstOrNull()?.url
     }
@@ -196,9 +197,9 @@ object IgExtractor {
     }
 
     /** Descarga directa con progreso. */
-    fun download(url: String, out: File, onProgress: (Float) -> Unit) {
+    fun download(url: String, out: File, referer: String = "https://www.instagram.com/", onProgress: (Float) -> Unit) {
         val c = conn(url, UA)
-        c.setRequestProperty("Referer", "https://www.instagram.com/")
+        c.setRequestProperty("Referer", referer)
         val total = c.contentLengthLong
         var done = 0L
         c.inputStream.use { inp ->

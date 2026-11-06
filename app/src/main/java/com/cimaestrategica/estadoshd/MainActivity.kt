@@ -94,7 +94,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.IntentCompat
 import kotlinx.coroutines.delay
 
-const val APP_VERSION = "3.6.1"
+const val APP_VERSION = "3.7"
 const val AUTHOR = "Hugo Cataño"
 const val AUTHOR_WEB = "https://hugocatano.com"
 
