@@ -366,6 +366,112 @@ fun BottomNav(section: Int, onSelect: (Int) -> Unit) {
     }
 }
 
+@Composable
+fun ErrorCard(d: DlState, vm: DownloadViewModel) {
+    var showDetail by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(22.dp)
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(lerp(cs.surface, GRed, 0.08f))
+            .border(1.dp, GRed.copy(alpha = 0.35f), shape)
+            .padding(14.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon3D(R.drawable.ms_error, GRed, 38.dp)
+            Spacer(Modifier.width(12.dp))
+            Text(d.errorTitle ?: "", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = cs.onSurface, lineHeight = 19.sp, modifier = Modifier.weight(1f))
+            IconButton(onClick = { vm.clearError() }) { Icon(painterResource(R.drawable.ms_close), "Cerrar", tint = cs.onSurfaceVariant) }
+        }
+        val accKey: String? = null
+        if (accKey != null) {
+            val acc = Accounts.ALL.first { it.key == accKey }
+            Spacer(Modifier.height(10.dp))
+            Button3D("Conectar ${acc.name}", acc.icon, Modifier.fillMaxWidth(), face = Color(acc.color), height = 52.dp) { vm.startLogin(acc.key) }
+        }
+        if (!d.errorDetail.isNullOrBlank()) {
+            TextButton(onClick = { showDetail = !showDetail }) { Text(if (showDetail) "Ocultar detalle técnico" else "Ver detalle técnico") }
+            if (showDetail) {
+                Text(
+                    d.errorDetail ?: "", fontSize = 10.5.sp, color = cs.onSurfaceVariant, lineHeight = 14.sp,
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(cs.surfaceContainerHigh).padding(10.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun AccountsCard(d: DlState, vm: DownloadViewModel) {
+    AppCard(padding = 12.dp) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon3D(R.drawable.ms_verified, GBlue, 32.dp)
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Cuentas conectadas", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = cs.onSurface)
+                Text("Instagram y otras redes exigen sesión. Se guarda solo en tu celular.", fontSize = 11.sp, color = cs.onSurfaceVariant, lineHeight = 14.sp)
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Accounts.ALL.forEach { acc ->
+                val on = acc.key in d.connected
+                val col = Color(acc.color)
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(if (on) lerp(cs.surface, GGreen, 0.10f) else cs.surfaceContainerHigh)
+                        .border(if (on) 1.5.dp else 0.dp, if (on) GGreen else Color.Transparent, RoundedCornerShape(16.dp))
+                        .clickable { if (on) vm.disconnect(acc.key) else vm.startLogin(acc.key) }
+                        .padding(vertical = 8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon3D(acc.icon, col, 30.dp)
+                    Spacer(Modifier.height(4.dp))
+                    Text(acc.name, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = cs.onSurface, maxLines = 1)
+                    Text(if (on) "Conectada" else "Conectar", fontSize = 9.5.sp, color = if (on) GGreen else cs.primary, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+    }
+}
+
+/** Pantalla de inicio de sesión dentro de la app (WebView). */
+@android.annotation.SuppressLint("SetJavaScriptEnabled")
+@Composable
+fun LoginOverlay(accKey: String, onDone: (Boolean) -> Unit) {
+    val acc = Accounts.ALL.first { it.key == accKey }
+    androidx.activity.compose.BackHandler { onDone(false) }
+    Column(Modifier.fillMaxSize().background(cs.surface).statusBarsPadding().navigationBarsPadding()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = { onDone(false) }) { Icon(painterResource(R.drawable.ms_close), "Cerrar") }
+            Icon3D(acc.icon, Color(acc.color), 32.dp)
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Conectar ${acc.name}", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = cs.onSurface)
+                Text("Inicia sesión y luego toca «Listo»", fontSize = 11.sp, color = cs.onSurfaceVariant)
+            }
+            Button3D("Listo", R.drawable.ms_check_circle, Modifier.width(120.dp), face = GGreen, height = 44.dp) { onDone(true) }
+        }
+        androidx.compose.ui.viewinterop.AndroidView(
+            factory = { c ->
+                android.webkit.CookieManager.getInstance().setAcceptCookie(true)
+                android.webkit.WebView(c).apply {
+                    settings.javaScriptEnabled = true
+                    settings.domStorageEnabled = true
+                    android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+                    webViewClient = android.webkit.WebViewClient()
+                    loadUrl(acc.loginUrl)
+                }
+            },
+            modifier = Modifier.fillMaxSize()
+        )
+    }
+}
+
+
 /** Línea de producción: al terminar la descarga, crea las partes HD y abre la publicación. */
 @Composable
 fun PipelineCard(d: DlState, vm: DownloadViewModel) {
