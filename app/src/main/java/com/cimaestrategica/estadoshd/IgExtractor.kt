@@ -58,7 +58,8 @@ object IgExtractor {
         val errors = mutableListOf<String>()
         var lsd = "AVqbxe3J_YA"
         try {
-            val page = conn("https://www.instagram.com/reel/$sc/").let { c ->
+            val kind = if (url.contains("/reel")) "reel" else "p"
+            val page = conn("https://www.instagram.com/$kind/$sc/").let { c ->
                 c.setRequestProperty("Accept", "text/html,application/xhtml+xml")
                 c.setRequestProperty("Sec-Fetch-Mode", "navigate")
                 if (c.responseCode !in 200..299) throw IllegalStateException("HTTP ${c.responseCode}")
@@ -72,7 +73,12 @@ object IgExtractor {
             try { graphql(sc, doc, lsd)?.let { cache[sc] = it; return it } ?: run { errors += "graphql($doc): respuesta vacía" } }
             catch (e: Exception) { errors += "graphql($doc): ${e.message}" }
         }
-        try { embed(sc)?.let { cache[sc] = it; return it } } catch (e: Exception) { errors += "embed: ${e.message}" }
+        try { embed(sc)?.let { cache[sc] = it; return it } ?: run { errors += "embed: sin video ni imagen" } }
+        catch (e: Exception) { errors += "embed: ${e.message}" }
+        try { mediaRedirect(sc)?.let { cache[sc] = it; return it } ?: run { errors += "media: sin imagen" } }
+        catch (e: Exception) { errors += "media: ${e.message}" }
+        try { oembed(sc)?.let { cache[sc] = it; return it } ?: run { errors += "oembed: sin imagen" } }
+        catch (e: Exception) { errors += "oembed: ${e.message}" }
         throw IllegalStateException("Instagram no entregó el contenido público.\n" + errors.joinToString("\n"))
     }
 
@@ -89,6 +95,10 @@ object IgExtractor {
         c.setRequestProperty("Origin", "https://www.instagram.com")
         c.setRequestProperty("Referer", "https://www.instagram.com/reel/$sc/")
         cookie("csrftoken")?.let { c.setRequestProperty("X-CSRFToken", it) }
+        c.setRequestProperty("X-Requested-With", "XMLHttpRequest")
+        c.setRequestProperty("X-IG-WWW-Claim", "0")
+        c.setRequestProperty("Sec-Fetch-Mode", "cors")
+        c.setRequestProperty("Sec-Fetch-Dest", "empty")
         c.outputStream.use { it.write(body.toByteArray()) }
         if (c.responseCode !in 200..299) throw IllegalStateException("HTTP ${c.responseCode}")
         val txt = c.inputStream.bufferedReader().readText()
@@ -109,20 +119,49 @@ object IgExtractor {
         )
     }
 
-    /** Lee el video directamente del HTML público del reel (video_versions / video_url). */
+    /** Lee del HTML público el video o las imágenes (fotos y carruseles). */
     private fun fromPage(raw: String): Post? {
         var html = raw
         repeat(3) { html = unescape(html) }
+        val user = Regex("\"username\":\"([A-Za-z0-9._]+)\"").find(html)?.groupValues?.get(1).orEmpty()
+        val title = Regex("<meta property=\"og:title\" content=\"([^\"]+)\"").find(html)?.groupValues?.get(1)?.take(90)
+            ?: "Publicación de @$user"
+        val ogImage = Regex("<meta property=\"og:image\" content=\"([^\"]+)\"").find(html)?.groupValues?.get(1)
         val video = Regex("\"video_versions\":\\[\\{[^\\]]*?\"url\":\"(https[^\"]+)\"").find(html)?.groupValues?.get(1)
             ?: Regex("\"video_url\":\"(https[^\"]+)\"").find(html)?.groupValues?.get(1)
             ?: Regex("<meta property=\"og:video(?::secure_url)?\" content=\"([^\"]+)\"").find(html)?.groupValues?.get(1)
-        val image = Regex("<meta property=\"og:image\" content=\"([^\"]+)\"").find(html)?.groupValues?.get(1)
-            ?: Regex("\"display_url\":\"(https[^\"]+)\"").find(html)?.groupValues?.get(1)
-        if (video == null) return null
-        val user = Regex("\"username\":\"([A-Za-z0-9._]+)\"").find(html)?.groupValues?.get(1).orEmpty()
-        val title = Regex("<meta property=\"og:title\" content=\"([^\"]+)\"").find(html)?.groupValues?.get(1)?.take(90)
-            ?: "Reel de @$user"
-        return Post(title, user, 0, listOf(Media(true, video, image)), null)
+        if (video != null) return Post(title, user, 0, listOf(Media(true, video, ogImage)), null)
+        // Imágenes: image_versions2 (la primera candidata es la de mayor tamaño)
+        val count = Regex("\"carousel_media_count\":(\\d+)").find(html)?.groupValues?.get(1)?.toIntOrNull() ?: 1
+        val imgs = Regex("\"image_versions2\":\\{\"candidates\":\\[\\{[^\\]]*?\"url\":\"(https[^\"]+)\"")
+            .findAll(html).map { it.groupValues[1] }.distinctBy { it.substringBefore('?') }.toList()
+        val chosen = when {
+            imgs.isNotEmpty() -> imgs.take(maxOf(1, if (count > 1) count + 1 else 1)).let { l -> if (count > 1 && l.size > count) l.drop(1).take(count) else l.take(maxOf(1, count)) }
+            ogImage != null -> listOf(ogImage)
+            else -> return null
+        }
+        return Post(title, user, 0, chosen.map { Media(false, it, it) }, null)
+    }
+
+    /** Camino público clásico: /p/{código}/media/?size=l redirige a la imagen. */
+    private fun mediaRedirect(sc: String): Post? {
+        val c = conn("https://www.instagram.com/p/$sc/media/?size=l", UA_M)
+        c.instanceFollowRedirects = true
+        val ok = c.responseCode in 200..299 && (c.contentType ?: "").startsWith("image")
+        val finalUrl = c.url.toString()
+        c.inputStream.close()
+        return if (ok) Post("Imagen de Instagram", "", 0, listOf(Media(false, finalUrl, finalUrl)), null) else null
+    }
+
+    /** oEmbed público: devuelve la imagen de portada de la publicación. */
+    private fun oembed(sc: String): Post? {
+        val c = conn("https://www.instagram.com/api/v1/oembed/?url=" + URLEncoder.encode("https://www.instagram.com/p/$sc/", "UTF-8"))
+        c.setRequestProperty("X-IG-App-ID", APP_ID)
+        if (c.responseCode !in 200..299) throw IllegalStateException("HTTP ${c.responseCode}")
+        val o = JSONObject(c.inputStream.bufferedReader().readText())
+        val img = o.optString("thumbnail_url").takeIf { it.startsWith("http") } ?: return null
+        val user = o.optString("author_name")
+        return Post(o.optString("title").take(90).ifBlank { "Publicación de @$user" }, user, 0, listOf(Media(false, img, img)), null)
     }
 
     private fun node(n: JSONObject): Media {
@@ -139,7 +178,13 @@ object IgExtractor {
         repeat(3) { html = unescape(html) }
         val video = Regex("\"video_url\":\"(https[^\"]+)\"").find(html)?.groupValues?.get(1)
         val images = Regex("\"display_url\":\"(https[^\"]+)\"").findAll(html).map { it.groupValues[1] }.distinct().toList()
-            .ifEmpty { Regex("class=\"EmbeddedMediaImage\"[^>]*src=\"([^\"]+)\"").findAll(html).map { it.groupValues[1] }.toList() }
+            .ifEmpty {
+                Regex("<img[^>]*EmbeddedMediaImage[^>]*>").findAll(html).mapNotNull { m ->
+                    val tag = m.value
+                    Regex("srcset=\"([^\"]+)\"").find(tag)?.groupValues?.get(1)?.split(",")?.lastOrNull()?.trim()?.substringBefore(' ')
+                        ?: Regex("src=\"([^\"]+)\"").find(tag)?.groupValues?.get(1)
+                }.toList()
+            }
         val user = Regex("\"username\":\"([^\"]+)\"").find(html)?.groupValues?.get(1)
             ?: Regex("class=\"UsernameText\">([^<]+)<").find(html)?.groupValues?.get(1).orEmpty()
         val items = when {

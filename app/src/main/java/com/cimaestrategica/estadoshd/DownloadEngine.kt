@@ -31,7 +31,9 @@ data class LinkInfo(
     val durationSec: Int,
     val thumbnailUrl: String?,
     val hasVideo: Boolean,
-    val site: String
+    val site: String,
+    val hasAudio: Boolean = false,
+    val imageCount: Int = 0
 )
 
 data class SiteInfo(val name: String, val color: Long, val icon: Int)
@@ -101,7 +103,8 @@ object DownloadEngine {
         if (IgExtractor.isInstagram(url)) {
             try {
                 val p = runInterruptible { IgExtractor.fetch(url) }
-                return@withContext LinkInfo(url, p.title, p.user, p.durationSec, p.cover, p.hasVideo, "Instagram")
+                return@withContext LinkInfo(url, p.title, p.user, p.durationSec, p.cover, p.hasVideo, "Instagram",
+                    hasAudio = p.audioUrl != null, imageCount = p.items.count { !it.isVideo })
             } catch (e: Exception) { igError = e.message }
         }
         try { analyzeYtdlp(ctx, url) } catch (e: Exception) {
