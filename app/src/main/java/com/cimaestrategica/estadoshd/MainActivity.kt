@@ -784,8 +784,8 @@ fun SegmentRow(seg: Segment, total: Int, progress: Int?, isNext: Boolean, onPrev
 fun ActionBar(s: UiState, vm: MainViewModel, countdown: Int, onPublish: () -> Unit) {
     val n = s.segments.size
     Surface(
-        color = cs.surface,
-        shadowElevation = 16.dp,
+        color = cs.surface.copy(alpha = 0.95f),
+        shadowElevation = 18.dp,
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
